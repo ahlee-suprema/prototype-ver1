@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>개인별 분석</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 p-6">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState } = React;
+
+        // 개인 선택 드롭다운
+        const EmployeeSelector = ({ employees, selected, onSelect }) => (
+            <select
+                value={selected}
+                onChange={(e) => onSelect(e.target.value)}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.dept})</option>
+                ))}
+            </select>
+        );
+
+        // 개인 프로필 카드
+        const ProfileCard = ({ employee }) => (
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-6 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -translate-y-20 translate-x-20" />
+                <div className="relative z-10 flex items-center gap-6">
+                    <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center text-3xl font-bold">{employee.name[0]}</div>
+                    <div className="flex-1">
+                        <h2 className="text-2xl font-bold">{employee.name}</h2>
+                        <p className="text-blue-100">{employee.dept} · {employee.position}</p>
+                        <p className="text-blue-200 text-sm mt-1">사번: {employee.empNo}</p>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-blue-100 text-sm">입사일</div>
+                        <div className="font-semibold">{employee.joinDate}</div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        // 개인 KPI 카드
+        const PersonalKPI = ({ data }) => (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {data.map((kpi, idx) => (
+                    <div key={idx} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-slate-500">{kpi.label}</span>
+                            <span className="text-xl">{kpi.icon}</span>
+                        </div>
+                        <div className="text-2xl font-bold text-slate-800">{kpi.value}</div>
+                        <div className={`text-xs mt-1 ${kpi.trend === 'up' ? 'text-green-600' : kpi.trend === 'down' ? 'text-red-600' : 'text-slate-400'}`}>
+                            {kpi.sub}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+
+        // 주간 출퇴근 패턴
+        const WeeklyPattern = ({ data }) => (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">주간 출퇴근 패턴</h3>
+                <div className="space-y-3">
+                    {data.map((day, idx) => (
+                        <div key={idx} className="flex items-center gap-4">
+                            <div className="w-8 text-sm font-medium text-slate-600">{day.day}</div>
+                            <div className="flex-1 relative h-8 bg-slate-100 rounded-lg overflow-hidden">
+                                {/* 정규 근무시간 표시 (8-17시) */}
+                                <div className="absolute h-full bg-slate-200" style={{ left: '33%', width: '37.5%' }} />
+                                {/* 실제 근무시간 */}
+                                <div className={`absolute h-full ${day.status === 'late' ? 'bg-red-400' : day.status === 'leave' ? 'bg-purple-400' : 'bg-blue-500'}`}
+                                    style={{ left: `${((day.clockIn - 7) / 17) * 100}%`, width: `${((day.clockOut - day.clockIn) / 17) * 100}%` }} />
+                            </div>
+                            <div className="w-32 text-right text-sm">
+                                {day.status === 'leave' ? (
+                                    <span className="text-purple-600">휴가</span>
+                                ) : (
+                                    <span className={day.status === 'late' ? 'text-red-600' : 'text-slate-600'}>
+                                        {day.clockIn}:00 ~ {day.clockOut}:00
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-slate-100 text-xs text-slate-500">
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-200 rounded" />정규 근무</div>
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded" />실제 근무</div>
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-400 rounded" />지각</div>
+                </div>
+            </div>
+        );
+
+        // 월간 근무시간 추이
+        const MonthlyHours = ({ data }) => {
+            const max = Math.max(...data.map(d => d.value));
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">월간 근무시간 추이</h3>
+                    <div className="flex items-end gap-2 h-32">
+                        {data.map((month, idx) => (
+                            <div key={idx} className="flex-1 flex flex-col items-center group">
+                                <div className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-all cursor-pointer relative" style={{ height: `${(month.value / max) * 100}%`, minHeight: '8px' }}>
+                                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap">{month.value}h</div>
+                                </div>
+                                <span className="text-xs text-slate-500 mt-2">{month.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="mt-4 flex justify-center gap-6 text-sm">
+                        <div className="text-center"><span className="font-bold text-slate-800">{Math.round(data.reduce((a, b) => a + b.value, 0) / data.length)}h</span><span className="text-slate-500 ml-1">월평균</span></div>
+                        <div className="text-center"><span className="font-bold text-green-600">{max}h</span><span className="text-slate-500 ml-1">최대</span></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 팀 내 비교 (랭킹)
+        const TeamRanking = ({ data, currentEmployee }) => (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">팀 내 비교</h3>
+                <div className="space-y-3">
+                    {data.map((person, idx) => (
+                        <div key={idx} className={`flex items-center gap-4 p-3 rounded-xl ${person.name === currentEmployee ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50'}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-amber-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : idx === 2 ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                {idx + 1}
+                            </div>
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">{person.name[0]}</div>
+                            <div className="flex-1">
+                                <div className="font-medium text-slate-800">{person.name}</div>
+                                <div className="text-xs text-slate-500">{person.position}</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="font-bold text-slate-800">{person.score}점</div>
+                                <div className="text-xs text-slate-500">근태 점수</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        // 목표 달성률
+        const GoalProgress = ({ goals }) => (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">목표 달성률</h3>
+                <div className="space-y-4">
+                    {goals.map((goal, idx) => (
+                        <div key={idx}>
+                            <div className="flex justify-between text-sm mb-1">
+                                <span className="text-slate-600">{goal.label}</span>
+                                <span className={`font-medium ${goal.current >= goal.target ? 'text-green-600' : 'text-slate-800'}`}>
+                                    {goal.current} / {goal.target} {goal.unit}
+                                </span>
+                            </div>
+                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all ${goal.current >= goal.target ? 'bg-green-500' : 'bg-blue-500'}`}
+                                    style={{ width: `${Math.min((goal.current / goal.target) * 100, 100)}%` }} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        const ReportEmployee = () => {
+            const employees = [
+                { id: 1, name: '김호준', dept: '개발1팀', position: '선임', empNo: 'EMP-2024-0127', joinDate: '2022-03-15' },
+                { id: 2, name: '김철수', dept: '개발1팀', position: '선임', empNo: 'EMP-2023-0456', joinDate: '2020-06-01' },
+                { id: 3, name: '이영희', dept: '개발1팀', position: '책임', empNo: 'EMP-2022-0123', joinDate: '2019-01-15' },
+                { id: 4, name: '박민수', dept: '개발2팀', position: '사원', empNo: 'EMP-2024-0789', joinDate: '2024-02-01' },
+            ];
+
+            const [selectedId, setSelectedId] = useState('1');
+            const selectedEmployee = employees.find(e => e.id === parseInt(selectedId));
+
+            const kpiData = [
+                { label: '이번 달 근무시간', value: '168h', sub: '목표 대비 100%', icon: '⏰', trend: 'up' },
+                { label: '출근율', value: '100%', sub: '팀 평균 96%', icon: '📊', trend: 'up' },
+                { label: '잔여 연차', value: '7일', sub: '15일 중', icon: '🏖️', trend: 'neutral' },
+                { label: '연장근무', value: '8h', sub: '주간 12h 한도', icon: '🔋', trend: 'down' },
+            ];
+
+            const weeklyData = [
+                { day: '월', clockIn: 8, clockOut: 17, status: 'normal' },
+                { day: '화', clockIn: 8, clockOut: 19, status: 'normal' },
+                { day: '수', clockIn: 9, clockOut: 17, status: 'late' },
+                { day: '목', clockIn: 8, clockOut: 18, status: 'normal' },
+                { day: '금', clockIn: 0, clockOut: 0, status: 'leave' },
+            ];
+
+            const monthlyData = [
+                { label: '8월', value: 176 }, { label: '9월', value: 168 }, { label: '10월', value: 184 },
+                { label: '11월', value: 160 }, { label: '12월', value: 172 }, { label: '1월', value: 168 },
+            ];
+
+            const teamRankingData = [
+                { name: '이영희', position: '책임', score: 98 },
+                { name: '김호준', position: '선임', score: 95 },
+                { name: '김철수', position: '선임', score: 92 },
+                { name: '정수진', position: '선임', score: 88 },
+                { name: '한미래', position: '사원', score: 85 },
+            ];
+
+            const goalData = [
+                { label: '월간 근무시간', current: 168, target: 168, unit: 'h' },
+                { label: '출근율', current: 100, target: 95, unit: '%' },
+                { label: '휴가 소진', current: 8, target: 12, unit: '일' },
+                { label: '지각 횟수', current: 1, target: 0, unit: '회' },
+            ];
+
+            const handleExport = () => {
+                const ws = XLSX.utils.aoa_to_sheet([
+                    ['항목', '값'],
+                    ['이름', selectedEmployee.name],
+                    ['부서', selectedEmployee.dept],
+                    ['직급', selectedEmployee.position],
+                    ...kpiData.map(k => [k.label, k.value])
+                ]);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '개인분석');
+                XLSX.writeFile(wb, `개인분석_${selectedEmployee.name}_${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">개인별 분석</h1>
+                            <p className="text-slate-500 text-sm">개인 근태 현황 및 팀 내 비교</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <EmployeeSelector employees={employees} selected={selectedId} onSelect={setSelectedId} />
+                            <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700">엑셀 다운로드</button>
+                        </div>
+                    </div>
+
+                    {/* Profile */}
+                    <div className="mb-6">
+                        <ProfileCard employee={selectedEmployee} />
+                    </div>
+
+                    {/* KPIs */}
+                    <div className="mb-6">
+                        <PersonalKPI data={kpiData} />
+                    </div>
+
+                    {/* Charts Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <WeeklyPattern data={weeklyData} />
+                        <MonthlyHours data={monthlyData} />
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <TeamRanking data={teamRankingData} currentEmployee={selectedEmployee.name} />
+                        <GoalProgress goals={goalData} />
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ReportEmployee />);
+    </script>
+</body>
+</html>

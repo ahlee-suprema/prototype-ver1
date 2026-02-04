@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .stat-card:hover { transform: translateY(-2px); }
+        .stat-card { transition: all 0.2s ease; }
+    </style>
+</head>
+<body class="bg-slate-50 p-6">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const Dashboard = () => {
+            const [currentTime, setCurrentTime] = useState(new Date());
+            const [isWorking, setIsWorking] = useState(false);
+            const [clockInTime, setClockInTime] = useState(null);
+            const [workingHours, setWorkingHours] = useState(0);
+
+            useEffect(() => {
+                const timer = setInterval(() => {
+                    setCurrentTime(new Date());
+                    if (clockInTime) {
+                        const diff = (new Date() - clockInTime) / (1000 * 60 * 60);
+                        setWorkingHours(diff);
+                    }
+                }, 1000);
+                return () => clearInterval(timer);
+            }, [clockInTime]);
+
+            const handleClockIn = () => {
+                setIsWorking(true);
+                setClockInTime(new Date());
+            };
+
+            const handleClockOut = () => {
+                setIsWorking(false);
+                setClockInTime(null);
+                setWorkingHours(0);
+            };
+
+            const stats = [
+                { label: '이번 주 근무', value: '38.5h', sub: '목표: 40h', color: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: '잔여 연차', value: '7일', sub: '총 15일', color: 'text-purple-600', bg: 'bg-purple-50' },
+                { label: '이번 달 연장근무', value: '8h', sub: '한도: 52h', color: 'text-amber-600', bg: 'bg-amber-50' },
+                { label: '출근율', value: '100%', sub: '이번 달', color: 'text-green-600', bg: 'bg-green-50' },
+            ];
+
+            const recentActivities = [
+                { type: 'clock-in', message: '출근 완료', time: '08:15', date: '오늘' },
+                { type: 'approval', message: '연장근무 승인됨', time: '어제', date: '' },
+                { type: 'leave', message: '휴가 신청 완료', time: '01/25', date: '' },
+            ];
+
+            const quickActions = [
+                { icon: '🏖️', label: '휴가 신청', href: 'leave-request.html' },
+                { icon: '⏰', label: '연장근무', href: 'overtime-request.html' },
+                { icon: '📋', label: '출퇴근 기록', href: 'content-attendance.html' },
+                { icon: '📊', label: '리포트', href: 'content-reports.html' },
+            ];
+
+            return (
+                <div className="max-w-6xl mx-auto">
+                    {/* Greeting */}
+                    <div className="mb-6">
+                        <h1 className="text-2xl font-bold text-slate-800">안녕하세요, 김호준님!</h1>
+                        <p className="text-slate-500">{currentTime.toLocaleDateString('ko-KR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    </div>
+
+                    {/* Clock In/Out Card */}
+                    <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-6 mb-6 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-24 translate-x-24" />
+                        <div className="relative z-10 flex items-center justify-between">
+                            <div>
+                                <div className="text-blue-100 text-sm mb-1">{isWorking ? '근무 중' : '출근 전'}</div>
+                                <div className="text-4xl font-bold font-mono">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                                {isWorking && (
+                                    <div className="mt-2 text-blue-100">
+                                        출근: {clockInTime?.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} · 근무: {workingHours.toFixed(1)}시간
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex gap-3">
+                                {!isWorking ? (
+                                    <button onClick={handleClockIn} className="px-6 py-3 bg-white text-blue-600 rounded-xl font-semibold hover:bg-blue-50 transition-colors">
+                                        출근하기
+                                    </button>
+                                ) : (
+                                    <button onClick={handleClockOut} className="px-6 py-3 bg-white/20 text-white rounded-xl font-semibold hover:bg-white/30 transition-colors">
+                                        퇴근하기
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        {stats.map((stat, idx) => (
+                            <div key={idx} className={`stat-card ${stat.bg} rounded-2xl p-5`}>
+                                <div className="text-sm text-slate-600 mb-1">{stat.label}</div>
+                                <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
+                                <div className="text-xs text-slate-400 mt-1">{stat.sub}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Quick Actions */}
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                            <h3 className="text-lg font-semibold text-slate-800 mb-4">빠른 메뉴</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {quickActions.map((action, idx) => (
+                                    <a key={idx} href={action.href} className="p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors flex items-center gap-3">
+                                        <span className="text-2xl">{action.icon}</span>
+                                        <span className="font-medium text-slate-700">{action.label}</span>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Recent Activity */}
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                            <h3 className="text-lg font-semibold text-slate-800 mb-4">최근 활동</h3>
+                            <div className="space-y-3">
+                                {recentActivities.map((activity, idx) => (
+                                    <div key={idx} className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                            activity.type === 'clock-in' ? 'bg-green-100 text-green-600' :
+                                            activity.type === 'approval' ? 'bg-blue-100 text-blue-600' :
+                                            'bg-purple-100 text-purple-600'
+                                        }`}>
+                                            {activity.type === 'clock-in' ? '✓' : activity.type === 'approval' ? '✓' : '📅'}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="font-medium text-slate-800">{activity.message}</div>
+                                            <div className="text-xs text-slate-500">{activity.date} {activity.time}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+    </script>
+</body>
+</html>

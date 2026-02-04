@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suprema T&A - 휴가관리</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'Noto Sans KR', 'sans-serif'] },
+                    colors: {
+                        primary: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a' },
+                        slate: { 50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a' }
+                    },
+                    animation: { 'fade-in': 'fadeIn 0.5s ease-out' },
+                    keyframes: { fadeIn: { '0%': { opacity:'0', transform:'translateY(10px)' }, '100%': { opacity:'1', transform:'translateY(0)' } } }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .nav-item { transition: all 0.2s ease; }
+        .nav-item:hover { background: rgba(37,99,235,0.1); }
+        .nav-item.active { background: rgba(37,99,235,0.15); border-right: 3px solid #2563eb; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .table-container { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; min-width: 1200px; }
+        th { position: sticky; top: 0; background: #f8fafc; z-index: 10; }
+        .leave-badge { display: inline-flex; align-items: center; padding: 0.25rem 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 600; }
+        .leave-annual { background: #dbeafe; color: #1e40af; }
+        .leave-sick { background: #fef3c7; color: #92400e; }
+        .leave-family { background: #fce7f3; color: #9f1239; }
+        .leave-unpaid { background: #f1f5f9; color: #475569; }
+        .leave-maternity { background: #f3e8ff; color: #6b21a8; }
+        .leave-public { background: #dcfce7; color: #166534; }
+        .status-badge { display:inline-flex;align-items:center;padding:0.25rem 0.5rem;border-radius:0.5rem;font-size:0.75rem;font-weight:600; }
+        .status-pending { background:#fef3c7;color:#92400e; }
+        .status-approved { background:#d1fae5;color:#065f46; }
+        .status-rejected { background:#fee2e2;color:#991b1b; }
+        .toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body class="bg-slate-50 antialiased">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // Toast
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, [onClose]);
+            return (
+                <div className={`toast fixed bottom-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${type === 'success' ? 'bg-green-500 text-white' : type === 'error' ? 'bg-red-500 text-white' : 'bg-slate-800 text-white'}`}>
+                    {type === 'success' && <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    {message}
+                </div>
+            );
+        };
+
+        const Modal = ({ isOpen, onClose, title, children }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                            <h2 className="text-xl font-bold text-slate-800">{title}</h2>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                                <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="p-6">{children}</div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Icons
+        const Icons = {
+            Home: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+            Clock: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Calendar: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+            Document: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+            Chart: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+            Settings: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+            Bell: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+            Users: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+            Plane: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
+Island: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 4c2-1 5-1 7 1-2 0-4 1-5 3m-2-4c-2-1-5-1-7 1 2 0 4 1 5 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 8c0 4-1 8-2 12" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20c2-2 5-3 8-3s6 1 8 3" /></svg>,
+Timer: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 21a9 9 0 100-18 9 9 0 000 18z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1h6M12 1v2" /></svg>,
+            Menu: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
+            Search: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+            Download: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
+            Clipboard: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+            Building: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
+            Check: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+            X: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+        };
+
+        const NAV_LINKS = {
+            dashboard: 'index.html', attendance: 'attendance-records.html', leave: 'leave-management.html',
+            overtime: 'overtime-management.html',  management: 'management.html',
+            requests: 'requests-management.html', company: 'company-settings.html', reports: 'reports.html?mode=hr', settings: 'settings.html?mode=hr',
+        };
+
+        // Sidebar
+        const Sidebar = ({ collapsed, setCollapsed }) => {
+            const menuItems = [
+                { id: 'dashboard', icon: <Icons.Home />, label: '대시보드' },
+                { id: 'attendance', icon: <Icons.Clock />, label: '출퇴근 기록' },
+                { id: 'leave', icon: <Icons.Island />, label: '휴가 관리' },
+                { id: 'overtime', icon: <Icons.Timer />, label: '연장/휴일근무' },
+                { id: 'requests', icon: <Icons.Clipboard />, label: '요청 관리' },
+                { id: 'management', icon: <Icons.Building />, label: '근무 규칙 관리' },
+                { id: 'company', icon: <Icons.Building />, label: '회사 규칙' },
+                { id: 'reports', icon: <Icons.Chart />, label: '리포트' },
+                { id: 'settings', icon: <Icons.Settings />, label: '설정' },
+            ];
+            const handleNav = (id) => { if (id !== 'leave') { const h = NAV_LINKS[id]; if (h) window.location.href = h; } };
+            return (
+                <aside className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 transition-all duration-300 z-40 ${collapsed ? 'w-20' : 'w-64'}`}>
+                    <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+                        {!collapsed && <a href="index.html" className="flex items-center gap-3"><div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">S</span></div><span className="font-bold text-slate-800">Suprema T&A</span></a>}
+                        <button onClick={() => setCollapsed(!collapsed)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><Icons.Menu /></button>
+                    </div>
+                    <nav className="p-3 space-y-1">
+                        {menuItems.map(item => (
+                            <button key={item.id} onClick={() => handleNav(item.id)}
+                                className={`nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${item.id === 'leave' ? 'active bg-primary-50 text-primary-600' : 'text-slate-600 hover:text-slate-800'}`}>
+                                <span className={item.id === 'leave' ? 'text-primary-600' : 'text-slate-400'}>{item.icon}</span>
+                                {!collapsed && <span className="font-medium flex-1">{item.label}</span>}
+                            </button>
+                        ))}
+                    </nav>
+                </aside>
+            );
+        };
+
+        // Header
+        const Header = ({ collapsed, viewMode, setViewMode, searchQuery, setSearchQuery }) => (
+            <header className={`fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100 z-30 transition-all duration-300 ${collapsed ? 'left-20' : 'left-64'}`}>
+                <div className="h-full px-6 flex items-center justify-end">
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-slate-100 rounded-xl p-1">
+                            <button onClick={() => window.location.href='emp-leave-management.html'} className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-slate-600">직원</button>
+                            <button className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all bg-white text-primary-600 shadow-sm">HR 관리자</button>
+                        </div>
+                        <button className="relative p-2 hover:bg-slate-100 rounded-xl transition-colors"><Icons.Bell /><span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">2</span></button>
+                    </div>
+                </div>
+            </header>
+        );
+
+        // ── Sample Data ──
+        const generateLeaveData = () => {
+            const employees = [
+                { empNo: 'E001', name: '김민수', dept: '개발팀', deptKey: 'dev' },
+                { empNo: 'E002', name: '이영지', dept: '마케팅팀', deptKey: 'marketing' },
+                { empNo: 'E003', name: '박철수', dept: '영업팀', deptKey: 'sales' },
+                { empNo: 'E004', name: '최수희', dept: '인사팀', deptKey: 'hr' },
+                { empNo: 'E005', name: '정미영', dept: '디자인팀', deptKey: 'design' },
+                { empNo: 'E006', name: '한지민', dept: '개발팀', deptKey: 'dev' },
+                { empNo: 'E007', name: '오세훈', dept: '영업팀', deptKey: 'sales' },
+                { empNo: 'E008', name: '윤서연', dept: '마케팅팀', deptKey: 'marketing' },
+                { empNo: 'E009', name: '장동건', dept: '인사팀', deptKey: 'hr' },
+                { empNo: 'E010', name: '김태희', dept: '개발팀', deptKey: 'dev' },
+                { empNo: 'E011', name: '이준호', dept: '영업팀', deptKey: 'sales' },
+                { empNo: 'E012', name: '송혜교', dept: '마케팅팀', deptKey: 'marketing' },
+            ];
+
+            const leaveTypes = [
+                { group: '연차', groupKey: 'annual', type: '연차', paidH: 8, deducted: 1.0 },
+                { group: '연차', groupKey: 'annual', type: '반차', paidH: 4, deducted: 0.5 },
+                { group: '연차', groupKey: 'annual', type: '연차', paidH: 16, deducted: 2.0 },
+                { group: '병가', groupKey: 'sick', type: '병가', paidH: 8, deducted: 1.0 },
+                { group: '경조', groupKey: 'family', type: '경조사', paidH: 24, deducted: 0 },
+                { group: '산전후', groupKey: 'maternity', type: '출산휴가', paidH: 480, deducted: 0 },
+            ];
+            const reasons = ['개인 사유', '병원 진료', '감기 치료', '결혼', '가족행사', '개인사유', '컨디션 회복', '여행'];
+            const statuses = ['approved','approved','approved','pending','pending','rejected'];
+
+            const records = [];
+            let id = 1;
+
+            // Generate leave records across Jan 2026
+            for (let day = 2; day <= 31; day++) {
+                const dow = new Date(2026, 0, day).getDay();
+                if (dow === 0 || dow === 6) continue;
+
+                // 2-3 leave records per weekday
+                const count = 2 + Math.floor(Math.random() * 2);
+                const usedEmps = new Set();
+                for (let i = 0; i < count; i++) {
+                    let emp;
+                    do { emp = employees[Math.floor(Math.random() * employees.length)]; } while (usedEmps.has(emp.empNo));
+                    usedEmps.add(emp.empNo);
+
+                    const lt = leaveTypes[Math.floor(Math.random() * leaveTypes.length)];
+                    const startDate = `2026-01-${String(day).padStart(2, '0')}`;
+                    let endDay = day;
+                    if (lt.deducted >= 2) endDay = Math.min(31, day + Math.floor(lt.deducted) - 1);
+                    const endDate = endDay > day ? `2026-01-${String(endDay).padStart(2, '0')}` : null;
+                    const period = endDate ? `${startDate} ~ ${endDate}` : (lt.type === '반차' ? `${startDate} (오전)` : startDate);
+
+                    records.push({
+                        id: id++,
+                        empNo: emp.empNo,
+                        name: emp.name,
+                        dept: emp.dept,
+                        deptKey: emp.deptKey,
+                        startDate,
+                        endDate: endDate || startDate,
+                        leavePeriod: period,
+                        leaveGroup: lt.group,
+                        leaveGroupKey: lt.groupKey,
+                        leaveType: lt.type,
+                        paidHours: `${lt.paidH}h`,
+                        deductedDays: lt.deducted,
+                        reason: reasons[Math.floor(Math.random() * reasons.length)],
+                        status: statuses[Math.floor(Math.random() * statuses.length)],
+                    });
+                }
+            }
+            return records;
+        };
+
+        const LEAVE_BADGE_MAP = {
+            '연차': 'leave-annual', '병가': 'leave-sick', '경조': 'leave-family',
+            '무급': 'leave-unpaid', '산전후': 'leave-maternity', '공가': 'leave-public',
+        };
+        const STATUS_MAP = { pending:{cls:'status-pending',label:'대기'}, approved:{cls:'status-approved',label:'승인'}, rejected:{cls:'status-rejected',label:'반려'} };
+
+        // Main content
+        const LeaveManagementContent = ({ searchQuery }) => {
+            const [toast, setToast] = useState(null);
+            const [dateFrom, setDateFrom] = useState('2026-01-27');
+            const [dateTo, setDateTo] = useState('2026-01-27');
+            const [quickFilter, setQuickFilter] = useState('today');
+            const [selectedDept, setSelectedDept] = useState('all');
+            const [selectedGroup, setSelectedGroup] = useState('all');
+            const [selectedAll, setSelectedAll] = useState(false);
+
+            // Advanced filters (Notion-style)
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialStatusFilter = urlParams.get('status');
+            const [advancedFilters, setAdvancedFilters] = useState([
+                { id: 'leaveGroup', field: '휴가 그룹', values: [] },
+                ...(initialStatusFilter ? [{ id: 'status', field: '상태', values: [initialStatusFilter] }] : [])
+            ]);
+            const [filterDropdownOpen, setFilterDropdownOpen] = useState(null);
+            const [addFilterOpen, setAddFilterOpen] = useState(false);
+            const filterRef = useRef(null);
+
+            const FILTER_OPTIONS = {
+                '휴가 그룹': { key: 'leaveGroup', type: 'badge', options: [
+                    { value: '연차', label: '연차', cls: 'leave-badge leave-annual' },
+                    { value: '병가', label: '병가', cls: 'leave-badge leave-sick' },
+                    { value: '경조', label: '경조', cls: 'leave-badge leave-family' },
+                    { value: '산전후', label: '산전후', cls: 'leave-badge leave-maternity' },
+                    { value: '무급', label: '무급', cls: 'leave-badge leave-unpaid' },
+                    { value: '공가', label: '공가', cls: 'leave-badge leave-public' },
+                ]},
+                '조직': { key: 'dept', type: 'text', options: [
+                    { value: '개발팀', label: '개발팀' },
+                    { value: '마케팅팀', label: '마케팅팀' },
+                    { value: '영업팀', label: '영업팀' },
+                    { value: '인사팀', label: '인사팀' },
+                    { value: '디자인팀', label: '디자인팀' },
+                ]},
+                '휴가 유형': { key: 'leaveType', type: 'text', options: [
+                    { value: '연차', label: '연차' },
+                    { value: '반차', label: '반차' },
+                    { value: '병가', label: '병가' },
+                    { value: '경조사', label: '경조사' },
+                    { value: '출산휴가', label: '출산휴가' },
+                ]},
+                '유급시간': { key: 'paidHours', type: 'text', options: [
+                    { value: '4h', label: '4h' },
+                    { value: '8h', label: '8h' },
+                    { value: '16h', label: '16h' },
+                    { value: '24h', label: '24h' },
+                    { value: '480h', label: '480h' },
+                ]},
+                '차감일수': { key: 'deductedDays', type: 'text', options: [
+                    { value: 0, label: '0일' },
+                    { value: 0.5, label: '0.5일' },
+                    { value: 1, label: '1일' },
+                    { value: 2, label: '2일' },
+                ]},
+                '상태': { key: 'status', type: 'badge', options: [
+                    { value: 'pending', label: '대기', cls: 'status-badge status-pending' },
+                    { value: 'approved', label: '승인', cls: 'status-badge status-approved' },
+                    { value: 'rejected', label: '반려', cls: 'status-badge status-rejected' },
+                ]},
+            };
+
+            const availableFilterFields = Object.keys(FILTER_OPTIONS).filter(
+                f => !advancedFilters.some(af => af.field === f)
+            );
+
+            const toggleFilterValue = (filterId, value) => {
+                setAdvancedFilters(prev => prev.map(f => {
+                    if (f.id !== filterId) return f;
+                    const vals = f.values.includes(value)
+                        ? f.values.filter(v => v !== value)
+                        : [...f.values, value];
+                    return { ...f, values: vals };
+                }));
+            };
+
+            const removeFilter = (filterId) => {
+                if (filterId === 'leaveGroup') {
+                    setAdvancedFilters(prev => prev.map(f => f.id === 'leaveGroup' ? { ...f, values: [] } : f));
+                } else {
+                    setAdvancedFilters(prev => prev.filter(f => f.id !== filterId));
+                }
+                setFilterDropdownOpen(null);
+            };
+
+            const addFilter = (field) => {
+                setAdvancedFilters(prev => [...prev, { id: field, field, values: [] }]);
+                setAddFilterOpen(false);
+                setFilterDropdownOpen(field);
+            };
+
+            useEffect(() => {
+                const handler = (e) => {
+                    if (filterRef.current && !filterRef.current.contains(e.target)) {
+                        setFilterDropdownOpen(null);
+                        setAddFilterOpen(false);
+                    }
+                };
+                document.addEventListener('mousedown', handler);
+                return () => document.removeEventListener('mousedown', handler);
+            }, []);
+
+            const [selectedRows, setSelectedRows] = useState([]);
+            const [currentPage, setCurrentPage] = useState(1);
+            const [showRejectModal, setShowRejectModal] = useState(false);
+            const [rejectReason, setRejectReason] = useState('');
+            const [currentRequestId, setCurrentRequestId] = useState(null);
+            const pageSize = 15;
+
+            const [allData, setAllData] = useState(() => generateLeaveData());
+
+            const filteredData = useMemo(() => {
+                let data = allData;
+                if (dateFrom) data = data.filter(r => r.endDate >= dateFrom);
+                if (dateTo) data = data.filter(r => r.startDate <= dateTo);
+                if (selectedDept !== 'all') data = data.filter(r => r.deptKey === selectedDept);
+                if (selectedGroup !== 'all') data = data.filter(r => r.leaveGroupKey === selectedGroup);
+                if (searchQuery && searchQuery.trim()) {
+                    const q = searchQuery.trim().toLowerCase();
+                    data = data.filter(r => r.name.toLowerCase().includes(q) || r.empNo.toLowerCase().includes(q) || r.dept.toLowerCase().includes(q));
+                }
+                // Apply advanced filters
+                for (const af of advancedFilters) {
+                    if (af.values.length === 0) continue;
+                    const opt = FILTER_OPTIONS[af.field];
+                    if (!opt) continue;
+                    data = data.filter(r => af.values.includes(r[opt.key]));
+                }
+                return data;
+            }, [allData, dateFrom, dateTo, selectedDept, selectedGroup, searchQuery, advancedFilters]);
+
+            useEffect(() => { setCurrentPage(1); }, [dateFrom, dateTo, selectedDept, selectedGroup, searchQuery]);
+
+            const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
+            const pagedData = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+            const getPageNumbers = () => { const p = []; const s = Math.max(1, currentPage - 2); const e = Math.min(totalPages, s + 4); for (let i = s; i <= e; i++) p.push(i); return p; };
+
+            const summary = useMemo(() => ({
+                total: filteredData.length,
+                annual: filteredData.filter(r => r.leaveGroupKey === 'annual').length,
+                sick: filteredData.filter(r => r.leaveGroupKey === 'sick').length,
+                family: filteredData.filter(r => r.leaveGroupKey === 'family').length,
+                maternity: filteredData.filter(r => r.leaveGroupKey === 'maternity').length,
+            }), [filteredData]);
+
+            const handleQuickFilter = (type) => {
+                setQuickFilter(type);
+                const today = new Date(2026, 0, 27);
+                if (type === 'today') { setDateFrom('2026-01-27'); setDateTo('2026-01-27'); }
+                else if (type === 'week') {
+                    const ws = new Date(today); ws.setDate(today.getDate() - today.getDay() + 1);
+                    const we = new Date(ws); we.setDate(ws.getDate() + 6);
+                    setDateFrom(ws.toISOString().split('T')[0]); setDateTo(we.toISOString().split('T')[0]);
+                } else if (type === 'month') {
+                    setDateFrom(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]);
+                    setDateTo(new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0]);
+                }
+            };
+
+            const handleSelectAll = () => {
+                if (selectedAll) setSelectedRows([]); else setSelectedRows(pagedData.map(d => d.id));
+                setSelectedAll(!selectedAll);
+            };
+            useEffect(() => {
+                if (pagedData.length === 0) { setSelectedAll(false); return; }
+                setSelectedAll(pagedData.every(d => selectedRows.includes(d.id)));
+            }, [selectedRows, pagedData]);
+            const handleSelectRow = (id) => setSelectedRows(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
+
+            const handleExportExcel = () => {
+                const exp = selectedRows.length > 0 ? filteredData.filter(r => selectedRows.includes(r.id)) : filteredData;
+                const data = [
+                    ['사원번호','직원','조직','휴가 기간','휴가 그룹','휴가 유형','유급 시간','차감 일수','사유'],
+                    ...exp.map(r => [r.empNo, r.name, r.dept, r.leavePeriod, r.leaveGroup, r.leaveType, r.paidHours, r.deductedDays, r.reason])
+                ];
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '휴가 현황');
+                XLSX.writeFile(wb, `휴가현황_${dateFrom}_${dateTo}.xlsx`);
+                setToast({ message: `${exp.length}건이 엑셀로 다운로드되었습니다.`, type: 'success' });
+            };
+
+            const handleApprove = (id) => {
+                setAllData(prev => prev.map(r => r.id===id ? {...r, status:'approved'} : r));
+                setToast({ message: '요청이 승인되었습니다.', type: 'success' });
+            };
+            const handleBulkApprove = () => {
+                const pendingSelected = selectedRows.filter(id => allData.find(r => r.id===id)?.status === 'pending');
+                if (pendingSelected.length === 0) { setToast({ message: '승인할 대기 요청이 없습니다.', type: 'error' }); return; }
+                setAllData(prev => prev.map(r => pendingSelected.includes(r.id) ? {...r, status:'approved'} : r));
+                setToast({ message: `${pendingSelected.length}건이 승인되었습니다.`, type: 'success' });
+                setSelectedRows([]);
+            };
+            const handleRejectClick = (id) => { setCurrentRequestId(id); setShowRejectModal(true); };
+            const handleRejectConfirm = () => {
+                if (!rejectReason.trim()) { setToast({ message: '반려 사유를 입력해주세요.', type: 'error' }); return; }
+                setAllData(prev => prev.map(r => r.id===currentRequestId ? {...r, status:'rejected'} : r));
+                setToast({ message: '요청이 반려되었습니다.', type: 'success' });
+                setShowRejectModal(false); setRejectReason(''); setCurrentRequestId(null);
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-800">휴가 관리</h1>
+                        <p className="text-slate-500">직원의 휴가 종류, 일정을 조회합니다</p>
+                    </div>
+
+                    {/* Summary */}
+                    <div className="grid grid-cols-5 gap-4">
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">전체</div>
+                            <div className="text-2xl font-bold text-slate-800">{summary.total}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">연차</div>
+                            <div className="text-2xl font-bold text-blue-600">{summary.annual}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">병가</div>
+                            <div className="text-2xl font-bold text-amber-600">{summary.sick}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">경조</div>
+                            <div className="text-2xl font-bold text-pink-600">{summary.family}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">산전후</div>
+                            <div className="text-2xl font-bold text-purple-600">{summary.maternity}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                        <div className="flex items-end gap-4 flex-wrap">
+                            <div className="flex-1 min-w-[300px]">
+                                <label className="block text-sm font-medium text-slate-700 mb-2">날짜 범위</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                    <span className="text-slate-400">-</span>
+                                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                </div>
+                            </div>
+                            <div className="flex bg-slate-100 rounded-lg p-1">
+                                <button onClick={() => handleQuickFilter('today')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${quickFilter === 'today' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'}`}>오늘</button>
+                                <button onClick={() => handleQuickFilter('week')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${quickFilter === 'week' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'}`}>이번 주</button>
+                                <button onClick={() => handleQuickFilter('month')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${quickFilter === 'month' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'}`}>이번 달</button>
+                            </div>
+                            <div className="flex-1"></div>
+                            <button onClick={handleBulkApprove} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-2">
+                                <Icons.Check />일괄 승인 {selectedRows.length > 0 && `(${selectedRows.length})`}
+                            </button>
+                            <button onClick={handleExportExcel} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center gap-2">
+                                <Icons.Download />엑셀 다운로드 {selectedRows.length > 0 && `(${selectedRows.length}건)`}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Notion-style Advanced Filter Bar */}
+                    <div className="flex items-center gap-2 flex-wrap" ref={filterRef}>
+                        {advancedFilters.map((af) => {
+                            const opt = FILTER_OPTIONS[af.field];
+                            if (!opt) return null;
+                            const isOpen = filterDropdownOpen === af.id;
+                            return (
+                                <div key={af.id} className="relative">
+                                    <button onClick={() => setFilterDropdownOpen(isOpen ? null : af.id)}
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${af.values.length > 0 ? 'bg-primary-50 border-primary-200 text-primary-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                                        {af.field}
+                                        {af.values.length > 0 && <span className="text-slate-400 mx-0.5">:</span>}
+                                        {af.values.length > 0 && (() => {
+                                            const labels = af.values.map(v => { const found = opt.options.find(o => o.value === v); return found ? found.label : v; });
+                                            if (labels.length <= 2) {
+                                                return labels.map((label, i) => (
+                                                    <span key={i}>
+                                                        {opt.type === 'badge' ? <span className={opt.options.find(o => o.label === label)?.cls || ''}>{label}</span> : <span className="text-sm">{label}</span>}
+                                                        {i < labels.length - 1 && <span className="text-slate-300 mx-0.5">,</span>}
+                                                    </span>
+                                                ));
+                                            } else {
+                                                const first = labels[0];
+                                                return (<span>{opt.type === 'badge' ? <span className={opt.options.find(o => o.label === first)?.cls || ''}>{first}</span> : <span className="text-sm">{first}</span>}<span className="bg-slate-100 text-slate-600 text-xs rounded-full px-1.5 py-0.5 ml-1">+{labels.length - 1}</span></span>);
+                                            }
+                                        })()}
+                                        {af.id !== 'leaveGroup' && <span onClick={(e) => { e.stopPropagation(); removeFilter(af.id); }} className="ml-1 hover:text-red-500 cursor-pointer">&times;</span>}
+                                    </button>
+                                    {isOpen && (
+                                        <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-200 z-50 py-1">
+                                            <div className="px-3 py-2 border-b border-slate-100"><div className="text-xs text-slate-400 font-medium uppercase">{af.field} 포함</div></div>
+                                            <div className="max-h-56 overflow-y-auto py-1">
+                                                {opt.options.map((o) => (
+                                                    <label key={o.value} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer transition-colors">
+                                                        <input type="checkbox" checked={af.values.includes(o.value)} onChange={() => toggleFilterValue(af.id, o.value)} className="w-4 h-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500" />
+                                                        {opt.type === 'badge' ? <span className={o.cls}>{o.label}</span> : <span className="text-sm text-slate-700">{o.label}</span>}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            {af.values.length > 0 && <div className="border-t border-slate-100 px-3 py-2"><button onClick={() => removeFilter(af.id)} className="text-xs text-slate-400 hover:text-red-500 transition-colors">필터 초기화</button></div>}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        <div className="relative">
+                            <button onClick={() => { setAddFilterOpen(!addFilterOpen); setFilterDropdownOpen(null); }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                필터 추가
+                            </button>
+                            {addFilterOpen && availableFilterFields.length > 0 && (
+                                <div className="absolute top-full left-0 mt-1 w-52 bg-white rounded-xl shadow-lg border border-slate-200 z-50 py-1">
+                                    <div className="px-3 py-2 border-b border-slate-100"><input type="text" placeholder="필터 검색..." className="w-full text-sm px-2 py-1 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" /></div>
+                                    {availableFilterFields.map(field => (
+                                        <button key={field} onClick={() => addFilter(field)} className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">{field}</button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Table */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div className="table-container">
+                            <table>
+                                <thead>
+                                    <tr className="border-b border-slate-200">
+                                        <th className="px-4 py-3 text-left"><input type="checkbox" checked={selectedAll} onChange={handleSelectAll} className="w-4 h-4 text-primary-600 rounded" /></th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">사원번호</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">직원</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">조직</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">휴가 기간</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">휴가 그룹</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">휴가 유형</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">유급 시간</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">차감 일수</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">사유</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">상태</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pagedData.length === 0 ? (
+                                        <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-400">검색 결과가 없습니다.</td></tr>
+                                    ) : pagedData.map(r => (
+                                        <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-3"><input type="checkbox" checked={selectedRows.includes(r.id)} onChange={() => handleSelectRow(r.id)} className="w-4 h-4 text-primary-600 rounded" /></td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{r.empNo}</td>
+                                            <td className="px-4 py-3 text-sm font-medium text-slate-800">{r.name}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{r.dept}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{r.leavePeriod}</td>
+                                            <td className="px-4 py-3"><span className={`leave-badge ${LEAVE_BADGE_MAP[r.leaveGroup] || 'leave-annual'}`}>{r.leaveGroup}</span></td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{r.leaveType}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{r.paidHours}</td>
+                                            <td className="px-4 py-3 text-sm font-medium text-slate-800">{r.deductedDays}일</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{r.reason}</td>
+                                            <td className="px-4 py-3"><span className={`status-badge ${STATUS_MAP[r.status]?.cls}`}>{STATUS_MAP[r.status]?.label}</span></td>
+                                            <td className="px-4 py-3">
+                                                {r.status === 'pending' ? (
+                                                    <div className="flex gap-2">
+                                                        <button onClick={()=>handleApprove(r.id)} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors" title="승인"><Icons.Check /></button>
+                                                        <button onClick={()=>handleRejectClick(r.id)} className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors" title="반려"><Icons.X /></button>
+                                                    </div>
+                                                ) : <span className="text-xs text-slate-400">처리완료</span>}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+                            <div className="text-sm text-slate-600">
+                                총 {filteredData.length}건 중 {filteredData.length > 0 ? (currentPage-1)*pageSize+1 : 0}-{Math.min(currentPage*pageSize, filteredData.length)}건
+                                {selectedRows.length > 0 && <span className="ml-2 text-primary-600 font-medium">({selectedRows.length}건 선택됨)</span>}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage===1} className="px-3 py-1 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">이전</button>
+                                {getPageNumbers().map(p => (
+                                    <button key={p} onClick={() => setCurrentPage(p)} className={`px-3 py-1 rounded-lg text-sm transition-colors ${p===currentPage ? 'bg-primary-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{p}</button>
+                                ))}
+                                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage===totalPages} className="px-3 py-1 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">다음</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Modal isOpen={showRejectModal} onClose={()=>{setShowRejectModal(false);setRejectReason('');setCurrentRequestId(null);}} title="반려 사유 입력">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">반려 사유</label>
+                                <textarea value={rejectReason} onChange={e=>setRejectReason(e.target.value)} rows={4}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="반려 사유를 입력해주세요" />
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={()=>{setShowRejectModal(false);setRejectReason('');setCurrentRequestId(null);}} className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200">취소</button>
+                                <button onClick={handleRejectConfirm} className="flex-1 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">반려하기</button>
+                            </div>
+                        </div>
+                    </Modal>
+
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+                </div>
+            );
+        };
+
+        // App
+        const App = () => {
+            const [collapsed, setCollapsed] = useState(false);
+            const [viewMode, setViewMode] = useState('hr');
+            const [searchQuery, setSearchQuery] = useState('');
+            return (
+                <div className="min-h-screen bg-slate-50">
+                    <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+                    <Header collapsed={collapsed} viewMode={viewMode} setViewMode={setViewMode} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+                    <main className={`pt-16 transition-all duration-300 ${collapsed ? 'ml-20' : 'ml-64'}`}>
+                        <div className="p-6"><LeaveManagementContent searchQuery={searchQuery} /></div>
+                    </main>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>

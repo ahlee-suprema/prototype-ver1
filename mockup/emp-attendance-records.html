@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>출퇴근 기록 - Suprema T&A</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .time-display { font-variant-numeric: tabular-nums; }
+        .toast {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 h-screen overflow-hidden">
+    <div id="root" class="h-full"></div>
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext } = React;
+
+        // Toast Context
+        const ToastContext = createContext();
+        const useToast = () => useContext(ToastContext);
+
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+
+            const addToast = (message, type = 'success') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setToasts(prev => prev.filter(t => t.id !== id));
+                }, 3000);
+            };
+
+            return (
+                <ToastContext.Provider value={{ addToast }}>
+                    {children}
+                    <div className="fixed bottom-4 right-4 z-50 space-y-2">
+                        {toasts.map(toast => (
+                            <div
+                                key={toast.id}
+                                className={`toast px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
+                                    toast.type === 'success' ? 'bg-green-500 text-white' :
+                                    toast.type === 'error' ? 'bg-red-500 text-white' :
+                                    'bg-slate-800 text-white'
+                                }`}
+                            >
+                                {toast.type === 'success' && (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                                {toast.message}
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+
+        // Generate sample data for the month
+        const generateMonthlyRecords = (year, month) => {
+            const records = [];
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const statuses = ['normal', 'normal', 'normal', 'normal', 'normal', 'late', 'overtime', 'leave', 'absent', 'shortHours'];
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const dayOfWeek = date.getDay();
+                const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    records.push({
+                        date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+                        day: dayNames[dayOfWeek],
+                        clockIn: '-',
+                        clockOut: '-',
+                        workHours: '-',
+                        breakTime: '-',
+                        actualHours: '-',
+                        overtime: '-',
+                        status: 'weekend',
+                        statusLabel: '주말',
+                        note: '',
+                    });
+                } else {
+                    const status = statuses[Math.floor(Math.random() * statuses.length)];
+                    // Rule 1: No clock-in earlier than 08:00
+                    const clockInHour = status === 'late' ? 10 : 8;
+                    const clockInMin = Math.floor(Math.random() * 45);
+
+                    // Rule 3: Friday working time is 4 hours
+                    let clockOutHour, clockOutMin;
+                    if (dayOfWeek === 5) { // Friday
+                        // 4 hours work + 0 break (under 4h doesn't get break)
+                        clockOutHour = clockInHour + 4;
+                        clockOutMin = clockInMin;
+                    } else {
+                        clockOutHour = status === 'overtime' ? 20 : 17 + Math.floor(Math.random() * 2);
+                        clockOutMin = Math.floor(Math.random() * 59);
+                    }
+
+                    const workStart = clockInHour * 60 + clockInMin;
+                    const workEnd = clockOutHour * 60 + clockOutMin;
+                    const totalMins = workEnd - workStart;
+
+                    // Rule 4: Every 4 hours gets 30min break
+                    const breakMins = Math.floor(totalMins / 240) * 30; // 240min = 4h
+
+                    let actualMins = totalMins - breakMins;
+
+                    // Rule 2: Round down to nearest 30min unit
+                    actualMins = Math.floor(actualMins / 30) * 30;
+
+                    const overtimeMins = Math.max(0, actualMins - 480);
+                    // Rule 2: Round down overtime to nearest 30min unit
+                    const roundedOvertimeMins = Math.floor(overtimeMins / 30) * 30;
+
+                    if (status === 'absent') {
+                        records.push({
+                            date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+                            day: dayNames[dayOfWeek],
+                            clockIn: '-',
+                            clockOut: '-',
+                            workHours: '-',
+                            breakTime: '-',
+                            actualHours: '-',
+                            overtime: '-',
+                            status: 'absent',
+                            statusLabel: '결근',
+                            note: '무단결근',
+                        });
+                    } else if (status === 'leave') {
+                        records.push({
+                            date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+                            day: dayNames[dayOfWeek],
+                            clockIn: '-',
+                            clockOut: '-',
+                            workHours: '-',
+                            breakTime: '-',
+                            actualHours: '8h 00m',
+                            overtime: '-',
+                            status: 'leave',
+                            statusLabel: '연차',
+                            note: '연차휴가',
+                        });
+                    } else if (status === 'shortHours') {
+                        const ciH = 8, ciM = Math.floor(Math.random() * 30);
+                        const coH = 14 + Math.floor(Math.random() * 2), coM = Math.floor(Math.random() * 59);
+                        const wStart = ciH * 60 + ciM, wEnd = coH * 60 + coM;
+                        const tMins = wEnd - wStart;
+                        const bMins = Math.floor(tMins / 240) * 30;
+                        let aMins = tMins - bMins;
+                        aMins = Math.floor(aMins / 30) * 30;
+                        records.push({
+                            date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+                            day: dayNames[dayOfWeek],
+                            clockIn: `${String(ciH).padStart(2, '0')}:${String(ciM).padStart(2, '0')}`,
+                            clockOut: `${String(coH).padStart(2, '0')}:${String(coM).padStart(2, '0')}`,
+                            workHours: `${Math.floor(tMins / 60)}h ${String(tMins % 60).padStart(2, '0')}m`,
+                            breakTime: bMins > 0 ? `${Math.floor(bMins / 60)}h ${String(bMins % 60).padStart(2, '0')}m` : '-',
+                            actualHours: `${Math.floor(aMins / 60)}h ${String(aMins % 60).padStart(2, '0')}m`,
+                            overtime: '-',
+                            status: 'shortHours',
+                            statusLabel: '근무시간 부족',
+                            note: '조기 퇴근 (근무시간 부족)',
+                        });
+                    } else {
+                        records.push({
+                            date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+                            day: dayNames[dayOfWeek],
+                            clockIn: `${String(clockInHour).padStart(2, '0')}:${String(clockInMin).padStart(2, '0')}`,
+                            clockOut: `${String(clockOutHour).padStart(2, '0')}:${String(clockOutMin).padStart(2, '0')}`,
+                            workHours: `${Math.floor(totalMins / 60)}h ${String(totalMins % 60).padStart(2, '0')}m`,
+                            breakTime: breakMins > 0 ? `${Math.floor(breakMins / 60)}h ${String(breakMins % 60).padStart(2, '0')}m` : '-',
+                            actualHours: `${Math.floor(actualMins / 60)}h ${String(actualMins % 60).padStart(2, '0')}m`,
+                            overtime: roundedOvertimeMins > 0 ? `${Math.floor(roundedOvertimeMins / 60)}h ${String(roundedOvertimeMins % 60).padStart(2, '0')}m` : '-',
+                            status: status,
+                            statusLabel: status === 'normal' ? '정상' : status === 'late' ? '지각' : '연장',
+                            note: status === 'late' ? '지각 (10:00 이후 출근)' : status === 'overtime' ? '연장근무 승인' : dayOfWeek === 5 ? '금요일 4시간 근무' : '',
+                        });
+                    }
+                }
+            }
+            return records;
+        };
+
+        const AttendanceRecords = () => {
+            const toast = useToast();
+            const [viewMode, setViewMode] = useState('month');
+            const [selectedYear, setSelectedYear] = useState(2026);
+            const [selectedMonth, setSelectedMonth] = useState(0); // January = 0
+            const [weekStart, setWeekStart] = useState(() => {
+                // Start at the Monday of the current week containing Jan 1 2026
+                const d = new Date(2026, 0, 1);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+                return new Date(2026, 0, diff);
+            });
+            const [records, setRecords] = useState([]);
+            const [filteredRecords, setFilteredRecords] = useState([]);
+            const [statusFilter, setStatusFilter] = useState('all');
+            const [showDetailModal, setShowDetailModal] = useState(false);
+            const [selectedRecord, setSelectedRecord] = useState(null);
+            const [isRulesExpanded, setIsRulesExpanded] = useState(false);
+            const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+            const [correctionRecord, setCorrectionRecord] = useState(null);
+            const [correctionMessage, setCorrectionMessage] = useState('');
+            const [correctionClockIn, setCorrectionClockIn] = useState('');
+            const [correctionClockOut, setCorrectionClockOut] = useState('');
+            const [correctionImages, setCorrectionImages] = useState([]);
+
+            // Generate records for a date range (for weekly view)
+            const generateRangeRecords = (startDate, days) => {
+                const result = [];
+                for (let i = 0; i < days; i++) {
+                    const d = new Date(startDate);
+                    d.setDate(d.getDate() + i);
+                    const yr = d.getFullYear();
+                    const mo = d.getMonth();
+                    const dy = d.getDate();
+                    // Reuse monthly generator logic by generating full month and picking the day
+                    const monthRecords = generateMonthlyRecords(yr, mo);
+                    const rec = monthRecords.find(r => r.date === `${yr}-${String(mo+1).padStart(2,'0')}-${String(dy).padStart(2,'0')}`);
+                    if (rec) result.push(rec);
+                }
+                return result;
+            };
+
+            useEffect(() => {
+                if (viewMode === 'month') {
+                    const data = generateMonthlyRecords(selectedYear, selectedMonth);
+                    setRecords(data);
+                } else {
+                    const data = generateRangeRecords(weekStart, 7);
+                    setRecords(data);
+                }
+            }, [selectedYear, selectedMonth, viewMode, weekStart]);
+
+            useEffect(() => {
+                let filtered = records;
+                if (statusFilter !== 'all') {
+                    if (statusFilter === 'weekend') {
+                        filtered = records.filter(r => r.status === 'weekend');
+                    } else {
+                        filtered = records.filter(r => r.status === statusFilter);
+                    }
+                }
+                setFilteredRecords(filtered);
+            }, [records, statusFilter]);
+
+            const monthSummary = {
+                totalWorkDays: records.filter(r => r.status !== 'weekend').length,
+                workedDays: records.filter(r => r.status === 'normal' || r.status === 'late' || r.status === 'overtime' || r.status === 'shortHours').length,
+                leaveDays: records.filter(r => r.status === 'leave').length,
+                lateDays: records.filter(r => r.status === 'late').length,
+                absentDays: records.filter(r => r.status === 'absent').length,
+                shortHoursDays: records.filter(r => r.status === 'shortHours').length,
+                overtimeDays: records.filter(r => r.status === 'overtime').length,
+                get totalWorkHours() {
+                    let total = this.workedDays * 8 + records.filter(r => r.status === 'overtime').length * 2;
+                    return `${total}h 00m`;
+                },
+                get totalOvertime() {
+                    const ot = records.filter(r => r.status === 'overtime').length * 2;
+                    return `${ot}h 00m`;
+                },
+                avgDailyHours: '8h 12m',
+            };
+
+            const statusColors = {
+                normal: 'bg-green-100 text-green-700',
+                late: 'bg-red-100 text-red-700',
+                early: 'bg-amber-100 text-amber-700',
+                leave: 'bg-purple-100 text-purple-700',
+                overtime: 'bg-blue-100 text-blue-700',
+                absent: 'bg-red-100 text-red-700',
+                shortHours: 'bg-orange-100 text-orange-700',
+                weekend: 'bg-blue-50 text-blue-500',
+            };
+
+            const downloadExcel = () => {
+                const data = [
+                    ['날짜', '요일', '출근', '퇴근', '체류시간', '휴게', '인정시간', '연장', '상태', '비고'],
+                    ...records.map(r => [
+                        r.date,
+                        r.day,
+                        r.clockIn,
+                        r.clockOut,
+                        r.workHours,
+                        r.breakTime,
+                        r.actualHours,
+                        r.overtime,
+                        r.statusLabel,
+                        r.note
+                    ])
+                ];
+
+                const ws = XLSX.utils.aoa_to_sheet(data);
+
+                // Set column widths
+                ws['!cols'] = [
+                    { wch: 12 }, // 날짜
+                    { wch: 5 },  // 요일
+                    { wch: 8 },  // 출근
+                    { wch: 8 },  // 퇴근
+                    { wch: 10 }, // 체류시간
+                    { wch: 8 },  // 휴게
+                    { wch: 10 }, // 인정시간
+                    { wch: 10 }, // 연장
+                    { wch: 8 },  // 상태
+                    { wch: 20 }, // 비고
+                ];
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '출퇴근기록');
+
+                // Add summary sheet
+                const summaryData = [
+                    ['항목', '값'],
+                    ['총 근무일', monthSummary.totalWorkDays],
+                    ['출근일', monthSummary.workedDays],
+                    ['휴가일', monthSummary.leaveDays],
+                    ['지각일', monthSummary.lateDays],
+                    ['연장근무일', monthSummary.overtimeDays],
+                    ['총 근무시간', monthSummary.totalWorkHours],
+                    ['총 연장시간', monthSummary.totalOvertime],
+                ];
+                const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+                XLSX.utils.book_append_sheet(wb, summaryWs, '월간요약');
+
+                XLSX.writeFile(wb, `출퇴근기록_${selectedYear}년${selectedMonth + 1}월.xlsx`);
+                toast.addToast('엑셀 파일이 다운로드되었습니다.', 'success');
+            };
+
+            const handleRowClick = (record) => {
+                if (record.status !== 'weekend') {
+                    setSelectedRecord(record);
+                    setShowDetailModal(true);
+                }
+            };
+
+            const navigatePrev = () => {
+                if (viewMode === 'month') {
+                    if (selectedMonth === 0) {
+                        setSelectedYear(selectedYear - 1);
+                        setSelectedMonth(11);
+                    } else {
+                        setSelectedMonth(selectedMonth - 1);
+                    }
+                } else {
+                    const prev = new Date(weekStart);
+                    prev.setDate(prev.getDate() - 7);
+                    setWeekStart(prev);
+                }
+            };
+
+            const navigateNext = () => {
+                if (viewMode === 'month') {
+                    if (selectedMonth === 11) {
+                        setSelectedYear(selectedYear + 1);
+                        setSelectedMonth(0);
+                    } else {
+                        setSelectedMonth(selectedMonth + 1);
+                    }
+                } else {
+                    const next = new Date(weekStart);
+                    next.setDate(next.getDate() + 7);
+                    setWeekStart(next);
+                }
+            };
+
+            const getNavigationText = () => {
+                if (viewMode === 'week') {
+                    const endDate = new Date(weekStart);
+                    endDate.setDate(endDate.getDate() + 6);
+                    const sm = weekStart.getMonth() + 1;
+                    const sd = weekStart.getDate();
+                    const em = endDate.getMonth() + 1;
+                    const ed = endDate.getDate();
+                    // Use the month of the week start for the title
+                    return `${weekStart.getFullYear()}년 ${sm}월 (${sm}/${sd} - ${em}/${ed})`;
+                }
+                return `${selectedYear}년 ${selectedMonth + 1}월`;
+            };
+
+            return (
+                <div className="h-full flex flex-col max-w-7xl mx-auto p-6 overflow-y-auto">
+                    {/* Header */}
+                    <div className="flex-shrink-0 flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">출퇴근 기록</h1>
+                            <p className="text-slate-500">근무 시간과 출퇴근 이력을 확인합니다</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={downloadExcel}
+                                className="px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                                엑셀 다운로드
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Month Summary Cards */}
+                    <div className="flex-shrink-0 grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">출근일수</div>
+                            <div className="text-2xl font-bold text-slate-800">
+                                {monthSummary.workedDays}
+                                <span className="text-base font-normal text-slate-400">/{monthSummary.totalWorkDays}일</span>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">총 근무시간</div>
+                            <div className="text-2xl font-bold text-slate-800">{monthSummary.totalWorkHours}</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">총 연장근무</div>
+                            <div className="text-2xl font-bold text-amber-600">{monthSummary.totalOvertime}</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">휴가</div>
+                            <div className="text-2xl font-bold text-purple-600">{monthSummary.leaveDays}일</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">지각</div>
+                            <div className="text-2xl font-bold text-red-600">{monthSummary.lateDays}일</div>
+                        </div>
+                    </div>
+
+                    {/* Filter & View Options */}
+                    <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-4 mb-4">
+                        <div className="flex items-center gap-4">
+                            {/* Month Navigation */}
+                            <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 p-1">
+                                <button
+                                    onClick={navigatePrev}
+                                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                </button>
+                                <span className="px-3 py-1 font-semibold text-slate-800 min-w-[180px] text-center">
+                                    {getNavigationText()}
+                                </span>
+                                <button
+                                    onClick={navigateNext}
+                                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {/* View Mode Toggle */}
+                            <div className="flex bg-slate-100 rounded-lg p-1">
+                                <button
+                                    onClick={() => setViewMode('week')}
+                                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                                        viewMode === 'week' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'
+                                    }`}
+                                >
+                                    주간
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('month')}
+                                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                                        viewMode === 'month' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'
+                                    }`}
+                                >
+                                    월간
+                                </button>
+                            </div>
+
+                            {/* Status Filter */}
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="all">전체 상태</option>
+                                <option value="normal">정상</option>
+                                <option value="late">지각</option>
+                                <option value="shortHours">근무시간 부족</option>
+                                <option value="absent">결근</option>
+                                <option value="overtime">연장</option>
+                                <option value="leave">휴가</option>
+                                <option value="weekend">주말</option>
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                                <span className="text-slate-600">정상</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                                <span className="text-slate-600">지각</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-purple-500"></span>
+                                <span className="text-slate-600">휴가</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-orange-500"></span>
+                                <span className="text-slate-600">근무시간 부족</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-red-800"></span>
+                                <span className="text-slate-600">결근</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                                <span className="text-slate-600">연장</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Records Table */}
+                    <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-0">
+                        <div className="overflow-auto flex-1">
+                            <table className="w-full table-fixed">
+                                <colgroup>
+                                    <col style={{width: '13%'}} />
+                                    <col style={{width: '8%'}} />
+                                    <col style={{width: '8%'}} />
+                                    <col style={{width: '9%'}} />
+                                    <col style={{width: '8%'}} />
+                                    <col style={{width: '9%'}} />
+                                    <col style={{width: '8%'}} />
+                                    <col style={{width: '10%'}} />
+                                    <col style={{width: '15%'}} />
+                                    <col style={{width: '12%'}} />
+                                </colgroup>
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-100">
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">날짜</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">출근</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">퇴근</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">체류시간</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">휴게</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">인정시간</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">연장</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">상태</th>
+                                        <th className="px-3 py-4 text-left text-sm font-semibold text-slate-600">비고</th>
+                                        <th className="px-3 py-4 text-center text-sm font-semibold text-slate-600"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredRecords.map((record, idx) => (
+                                        <tr
+                                            key={idx}
+                                            onClick={() => handleRowClick(record)}
+                                            className={`border-b border-slate-50 transition-colors ${
+                                                record.status === 'weekend'
+                                                    ? 'bg-slate-25'
+                                                    : 'hover:bg-slate-50 cursor-pointer'
+                                            }`}
+                                        >
+                                            <td className="px-3 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-medium flex-shrink-0 ${
+                                                        record.status === 'weekend' ? 'bg-blue-100 text-blue-600' :
+                                                        'bg-slate-100 text-slate-600'
+                                                    }`}>
+                                                        {record.day}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-medium text-slate-800 text-sm">{record.date}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-4 time-display text-slate-700 font-medium text-sm">{record.clockIn}</td>
+                                            <td className="px-3 py-4 time-display text-slate-700 font-medium text-sm">{record.clockOut}</td>
+                                            <td className="px-3 py-4 time-display text-slate-700 text-sm">{record.workHours}</td>
+                                            <td className="px-3 py-4 time-display text-slate-500 text-sm">{record.breakTime}</td>
+                                            <td className="px-3 py-4 time-display text-slate-700 font-medium text-sm">{record.actualHours}</td>
+                                            <td className="px-3 py-4">
+                                                {record.overtime !== '-' ? (
+                                                    <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium">
+                                                        {record.overtime}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-400">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-4">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[record.status]}`}>
+                                                    {record.statusLabel}
+                                                </span>
+                                            </td>
+                                            <td className="px-3 py-4 text-sm text-slate-500 truncate" title={record.note}>{record.note}</td>
+                                            <td className="px-3 py-4 text-center">
+                                                {(record.status === 'late' || record.status === 'shortHours' || record.status === 'absent') && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setCorrectionRecord(record); setCorrectionMessage(''); setShowCorrectionModal(true); }}
+                                                        className="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors whitespace-nowrap"
+                                                    >
+                                                        정정요청
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Rules Info - Collapsible */}
+                    <div className="flex-shrink-0 mt-4 bg-blue-50 rounded-xl border border-blue-100 overflow-hidden">
+                        <button
+                            onClick={() => setIsRulesExpanded(!isRulesExpanded)}
+                            className="w-full p-4 flex items-center justify-between hover:bg-blue-100 transition-colors"
+                        >
+                            <h4 className="font-semibold text-blue-800">근무시간 계산 기준</h4>
+                            <svg
+                                className={`w-5 h-5 text-blue-800 transition-transform ${isRulesExpanded ? 'rotate-180' : ''}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        {isRulesExpanded && (
+                            <div className="px-4 pb-4">
+                                <div className="grid grid-cols-2 gap-4 text-sm text-blue-700">
+                                    <div>
+                                        <div className="font-medium">출근 시각</div>
+                                        <div className="text-blue-600">08:00 이전 출근 불가</div>
+                                    </div>
+                                    <div>
+                                        <div className="font-medium">지각 기준</div>
+                                        <div className="text-blue-600">10:00:00 이후 출근 시 지각</div>
+                                    </div>
+                                    <div>
+                                        <div className="font-medium">휴게시간</div>
+                                        <div className="text-blue-600">4시간마다 30분 (4h: 30분 / 8h: 60분 / 12h: 90분)</div>
+                                    </div>
+                                    <div>
+                                        <div className="font-medium">시간 계산 단위</div>
+                                        <div className="text-blue-600">인정시간 및 연장시간은 30분 단위로 절사</div>
+                                    </div>
+                                    <div>
+                                        <div className="font-medium">금요일 근무</div>
+                                        <div className="text-blue-600">4시간 근무제</div>
+                                    </div>
+                                    <div>
+                                        <div className="font-medium">연장근로 시작</div>
+                                        <div className="text-blue-600">8시간(휴게 제외) 초과 시</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Correction Request Modal */}
+                    {showCorrectionModal && correctionRecord && (
+                        <div
+                            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                            onClick={() => {
+                                setShowCorrectionModal(false);
+                                correctionImages.forEach(img => URL.revokeObjectURL(img.preview));
+                                setCorrectionImages([]);
+                            }}
+                        >
+                            <div
+                                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="p-6 border-b border-slate-100">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-xl font-bold text-slate-800">근태 정정 신청</h2>
+                                        <button
+                                            onClick={() => {
+                                                setShowCorrectionModal(false);
+                                                correctionImages.forEach(img => URL.revokeObjectURL(img.preview));
+                                                setCorrectionImages([]);
+                                            }}
+                                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                        >
+                                            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold ${statusColors[correctionRecord.status]}`}>
+                                            {correctionRecord.day}
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-semibold text-slate-800">{correctionRecord.date}</div>
+                                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[correctionRecord.status]}`}>
+                                                {correctionRecord.statusLabel}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="text-sm font-medium text-slate-700">현재 기록</div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-3 bg-slate-50 rounded-xl">
+                                                <div className="text-xs text-slate-400 mb-1">출근</div>
+                                                <div className="font-semibold text-slate-500">{correctionRecord.clockIn}</div>
+                                            </div>
+                                            <div className="p-3 bg-slate-50 rounded-xl">
+                                                <div className="text-xs text-slate-400 mb-1">퇴근</div>
+                                                <div className="font-semibold text-slate-500">{correctionRecord.clockOut}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="text-sm font-medium text-slate-700">정정 시간</div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs text-slate-500 mb-1">출근 시간</label>
+                                                <input
+                                                    type="time"
+                                                    value={correctionClockIn}
+                                                    onChange={(e) => setCorrectionClockIn(e.target.value)}
+                                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-slate-500 mb-1">퇴근 시간</label>
+                                                <input
+                                                    type="time"
+                                                    value={correctionClockOut}
+                                                    onChange={(e) => setCorrectionClockOut(e.target.value)}
+                                                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">정정 사유</label>
+                                        <textarea
+                                            value={correctionMessage}
+                                            onChange={(e) => setCorrectionMessage(e.target.value)}
+                                            placeholder="정정 사유를 입력해주세요. (예: 외근으로 인한 지각, 시스템 오류 등)"
+                                            rows={4}
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">증빙 자료 첨부</label>
+                                        <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 hover:border-primary-300 transition-colors">
+                                            <input
+                                                type="file"
+                                                id="correction-image-input"
+                                                accept="image/*"
+                                                multiple
+                                                onChange={(e) => {
+                                                    const files = Array.from(e.target.files);
+                                                    const newImages = files.map(file => ({
+                                                        id: Date.now() + Math.random(),
+                                                        file,
+                                                        preview: URL.createObjectURL(file),
+                                                        name: file.name
+                                                    }));
+                                                    setCorrectionImages(prev => [...prev, ...newImages].slice(0, 5));
+                                                    e.target.value = '';
+                                                }}
+                                                className="hidden"
+                                            />
+                                            <label
+                                                htmlFor="correction-image-input"
+                                                className="flex flex-col items-center cursor-pointer"
+                                            >
+                                                <svg className="w-10 h-10 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                </svg>
+                                                <span className="text-sm text-slate-500">클릭하여 이미지 첨부</span>
+                                                <span className="text-xs text-slate-400 mt-1">최대 5개까지 첨부 가능</span>
+                                            </label>
+                                        </div>
+                                        {correctionImages.length > 0 && (
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {correctionImages.map((img) => (
+                                                    <div key={img.id} className="relative group">
+                                                        <img
+                                                            src={img.preview}
+                                                            alt={img.name}
+                                                            className="w-16 h-16 object-cover rounded-lg border border-slate-200"
+                                                        />
+                                                        <button
+                                                            onClick={() => {
+                                                                URL.revokeObjectURL(img.preview);
+                                                                setCorrectionImages(prev => prev.filter(i => i.id !== img.id));
+                                                            }}
+                                                            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        >
+                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="p-6 border-t border-slate-100 flex gap-3">
+                                    <button
+                                        onClick={() => {
+                                            setShowCorrectionModal(false);
+                                            correctionImages.forEach(img => URL.revokeObjectURL(img.preview));
+                                            setCorrectionImages([]);
+                                        }}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                                    >
+                                        취소
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (!correctionMessage.trim()) {
+                                                toast.addToast('정정 사유를 입력해주세요.', 'error');
+                                                return;
+                                            }
+                                            toast.addToast('근태 정정 신청이 관리자에게 전송되었습니다.', 'success');
+                                            setShowCorrectionModal(false);
+                                            setCorrectionMessage('');
+                                            setCorrectionClockIn('');
+                                            setCorrectionClockOut('');
+                                            correctionImages.forEach(img => URL.revokeObjectURL(img.preview));
+                                            setCorrectionImages([]);
+                                        }}
+                                        className="flex-1 py-3 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors"
+                                    >
+                                        정정 신청
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Detail Modal */}
+                    {showDetailModal && selectedRecord && (
+                        <div
+                            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                            onClick={() => setShowDetailModal(false)}
+                        >
+                            <div
+                                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="p-6 border-b border-slate-100">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-xl font-bold text-slate-800">근무 상세</h2>
+                                        <button
+                                            onClick={() => setShowDetailModal(false)}
+                                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                        >
+                                            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold ${statusColors[selectedRecord.status] || 'bg-slate-100 text-slate-600'}`}>
+                                            {selectedRecord.day}
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-semibold text-slate-800">{selectedRecord.date}</div>
+                                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[selectedRecord.status]}`}>
+                                                {selectedRecord.statusLabel}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">출근 시각</div>
+                                            <div className="text-xl font-bold text-slate-800">{selectedRecord.clockIn}</div>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">퇴근 시각</div>
+                                            <div className="text-xl font-bold text-slate-800">{selectedRecord.clockOut}</div>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">인정 근무시간</div>
+                                            <div className="text-xl font-bold text-slate-800">{selectedRecord.actualHours}</div>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">연장 근무</div>
+                                            <div className={`text-xl font-bold ${selectedRecord.overtime !== '-' ? 'text-amber-600' : 'text-slate-400'}`}>
+                                                {selectedRecord.overtime}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {selectedRecord.note && (
+                                        <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                                            <div className="text-sm text-amber-700 font-medium">비고</div>
+                                            <div className="text-amber-800">{selectedRecord.note}</div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="p-6 border-t border-slate-100 flex gap-3">
+                                    <button
+                                        onClick={() => {
+                                            toast.addToast('수정 요청이 전송되었습니다.', 'success');
+                                            setShowDetailModal(false);
+                                        }}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                                    >
+                                        수정 요청
+                                    </button>
+                                    <button
+                                        onClick={() => setShowDetailModal(false)}
+                                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                    >
+                                        확인
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Icons for sidebar
+        const SidebarIcons = {
+            Home: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+            Clock: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Document: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+            Chart: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+            Settings: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+            Bell: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+            Users: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+            Plane: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
+            Island: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 4c2-1 5-1 7 1-2 0-4 1-5 3m-2-4c-2-1-5-1-7 1 2 0 4 1 5 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 8c0 4-1 8-2 12" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20c2-2 5-3 8-3s6 1 8 3" /></svg>,
+            Timer: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 21a9 9 0 100-18 9 9 0 000 18z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1h6M12 1v2" /></svg>,
+            Menu: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
+            Search: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+        };
+
+        const EmpSidebar = ({ collapsed, setCollapsed }) => {
+            const menuItems = [
+                { id: 'dashboard', icon: <SidebarIcons.Home />, label: '대시보드', page: 'emp-index.html' },
+                { id: 'attendance', icon: <SidebarIcons.Clock />, label: '출퇴근 기록', page: null },
+                { id: 'leave', icon: <SidebarIcons.Island />, label: '휴가관리', page: 'emp-leave-management.html' },
+                { id: 'overtime', icon: <SidebarIcons.Timer />, label: '연장/휴일 근무', page: 'emp-overtime-management.html' },
+                { id: 'team', icon: <SidebarIcons.Users />, label: '팀 근무 관리', page: 'team-management.html?mode=employee' },
+                { id: 'reports', icon: <SidebarIcons.Chart />, label: '리포트', page: 'reports.html?mode=employee' },
+                { id: 'settings', icon: <SidebarIcons.Settings />, label: '설정', page: 'settings.html?mode=employee' },
+            ];
+            return (
+                <aside className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 transition-all duration-300 z-40 ${collapsed ? 'w-20' : 'w-64'}`}>
+                    <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+                        {!collapsed && <a href="emp-index.html" className="flex items-center gap-3"><div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">S</span></div><span className="font-bold text-slate-800">Suprema T&A</span></a>}
+                        <button onClick={() => setCollapsed(!collapsed)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><SidebarIcons.Menu /></button>
+                    </div>
+                    <nav className="p-3 space-y-1">
+                        {menuItems.map(item => (
+                            <button key={item.id} onClick={() => { if (item.page) window.location.href = item.page; }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${item.id === 'attendance' ? 'bg-primary-50 text-primary-600' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'}`}>
+                                <span className={item.id === 'attendance' ? 'text-primary-600' : 'text-slate-400'}>{item.icon}</span>
+                                {!collapsed && <span className="font-medium flex-1">{item.label}</span>}
+                            </button>
+                        ))}
+                    </nav>
+                </aside>
+            );
+        };
+
+        const EmpHeader = ({ collapsed }) => (
+            <header className={`fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100 z-30 transition-all duration-300 ${collapsed ? 'left-20' : 'left-64'}`}>
+                <div className="h-full px-6 flex items-center justify-end">
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-slate-100 rounded-xl p-1">
+                            <button className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-primary-600 shadow-sm">직원</button>
+                            <button onClick={() => window.location.href='attendance-records.html'} className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800">HR 관리자</button>
+                        </div>
+                        <button className="relative p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                            <SidebarIcons.Bell />
+                            <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">2</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+        );
+
+        const App = () => {
+            const [collapsed, setCollapsed] = useState(false);
+            return (
+                <ToastProvider>
+                    <div className="min-h-screen bg-slate-50">
+                        <EmpSidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+                        <EmpHeader collapsed={collapsed} />
+                        <main className={`pt-16 h-screen transition-all duration-300 ${collapsed ? 'ml-20' : 'ml-64'}`}>
+                            <div className="p-6 h-full overflow-y-auto">
+                                <AttendanceRecords />
+                            </div>
+                        </main>
+                    </div>
+                </ToastProvider>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>팀 근무 관리 - Suprema T&A</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext } = React;
+
+        // Toast Context
+        const ToastContext = createContext();
+        const useToast = () => useContext(ToastContext);
+
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+
+            const addToast = (message, type = 'success') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setToasts(prev => prev.filter(t => t.id !== id));
+                }, 3000);
+            };
+
+            return (
+                <ToastContext.Provider value={{ addToast }}>
+                    {children}
+                    <div className="fixed bottom-4 right-4 z-50 space-y-2">
+                        {toasts.map(toast => (
+                            <div
+                                key={toast.id}
+                                className={`toast px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
+                                    toast.type === 'success' ? 'bg-green-500 text-white' :
+                                    toast.type === 'error' ? 'bg-red-500 text-white' :
+                                    toast.type === 'warning' ? 'bg-amber-500 text-white' :
+                                    'bg-slate-800 text-white'
+                                }`}
+                            >
+                                {toast.type === 'success' && (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                                {toast.message}
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+
+        const TeamManagement = () => {
+            const toast = useToast();
+            const [activeTab, setActiveTab] = useState('today');
+            const [selectedTeam, setSelectedTeam] = useState('all');
+            const [showApprovalModal, setShowApprovalModal] = useState(false);
+            const [selectedApproval, setSelectedApproval] = useState(null);
+            const [showScheduleModal, setShowScheduleModal] = useState(false);
+            const [selectedSchedule, setSelectedSchedule] = useState(null);
+            const [currentMonth, setCurrentMonth] = useState(new Date(2026, 0, 1)); // January 2026
+            const [viewMode, setViewMode] = useState('calendar'); // 'list' or 'calendar'
+
+            // Work type color configuration
+            const workTypeConfig = {
+                '연장근무': { bg: 'bg-blue-100', text: 'text-blue-700', solid: 'bg-blue-500', dimmed: 'bg-blue-300' },
+                '휴일근무': { bg: 'bg-indigo-100', text: 'text-indigo-700', solid: 'bg-indigo-500', dimmed: 'bg-indigo-300' },
+                '휴가': { bg: 'bg-purple-100', text: 'text-purple-700', solid: 'bg-purple-500', dimmed: 'bg-purple-300' },
+                '외근': { bg: 'bg-amber-100', text: 'text-amber-700', solid: 'bg-amber-500', dimmed: 'bg-amber-300' },
+                '출장': { bg: 'bg-orange-100', text: 'text-orange-700', solid: 'bg-orange-500', dimmed: 'bg-orange-300' },
+                '결근': { bg: 'bg-red-100', text: 'text-red-700', solid: 'bg-red-500', dimmed: 'bg-red-300' },
+            };
+
+            const teams = [
+                { id: 'all', name: '전체 팀', count: 120 },
+                { id: 'dev1', name: '개발1팀', count: 25 },
+                { id: 'dev2', name: '개발2팀', count: 22 },
+                { id: 'design', name: '디자인팀', count: 15 },
+                { id: 'marketing', name: '마케팅팀', count: 20 },
+                { id: 'sales', name: '영업팀', count: 28 },
+                { id: 'hr', name: '인사팀', count: 10 },
+            ];
+
+            const [teamMembers, setTeamMembers] = useState([
+                {
+                    id: 1, name: '김철수', position: '선임', dept: '개발1팀',
+                    status: 'working', clockIn: '08:15', clockOut: null,
+                    workHours: '7h 45m', weeklyHours: 38.5, avatar: '김',
+                    email: 'cskim@suprema.co.kr', phone: '010-1234-5678'
+                },
+                {
+                    id: 2, name: '이영희', position: '책임', dept: '개발1팀',
+                    status: 'working', clockIn: '08:30', clockOut: null,
+                    workHours: '7h 30m', weeklyHours: 42.0, avatar: '이',
+                    email: 'yhlee@suprema.co.kr', phone: '010-2345-6789'
+                },
+                {
+                    id: 3, name: '박민수', position: '사원', dept: '개발1팀',
+                    status: 'leave', clockIn: '-', clockOut: '-',
+                    workHours: '-', weeklyHours: 32.0, avatar: '박',
+                    leaveType: '연차', email: 'mspark@suprema.co.kr', phone: '010-3456-7890'
+                },
+                {
+                    id: 4, name: '정수진', position: '선임', dept: '개발1팀',
+                    status: 'late', clockIn: '10:30', clockOut: null,
+                    workHours: '5h 30m', weeklyHours: 35.5, avatar: '정',
+                    email: 'sjjeong@suprema.co.kr', phone: '010-4567-8901'
+                },
+                {
+                    id: 5, name: '최준혁', position: '책임', dept: '개발1팀',
+                    status: 'working', clockIn: '07:55', clockOut: null,
+                    workHours: '8h 05m', weeklyHours: 48.0, avatar: '최',
+                    warning: true, email: 'jhchoi@suprema.co.kr', phone: '010-5678-9012'
+                },
+                {
+                    id: 6, name: '한미래', position: '사원', dept: '개발1팀',
+                    status: 'absent', clockIn: '-', clockOut: '-',
+                    workHours: '-', weeklyHours: 36.0, avatar: '한',
+                    email: 'mrhan@suprema.co.kr', phone: '010-6789-0123'
+                },
+                {
+                    id: 7, name: '송지은', position: '선임', dept: '개발2팀',
+                    status: 'working', clockIn: '08:45', clockOut: null,
+                    workHours: '7h 15m', weeklyHours: 40.0, avatar: '송',
+                    email: 'jesong@suprema.co.kr', phone: '010-7890-1234'
+                },
+                {
+                    id: 8, name: '윤서준', position: '사원', dept: '디자인팀',
+                    status: 'working', clockIn: '09:00', clockOut: null,
+                    workHours: '7h 00m', weeklyHours: 38.0, avatar: '윤',
+                    email: 'sjyoon@suprema.co.kr', phone: '010-8901-2345'
+                },
+            ]);
+
+            const [pendingApprovals, setPendingApprovals] = useState([
+                { id: 1, type: '연장근무', requester: '김철수', dept: '개발1팀', date: '01/27', hours: '2시간', reason: '긴급 버그 수정', status: 'pending' },
+                { id: 2, type: '휴가', requester: '이영희', dept: '개발1팀', date: '02/03', days: '1일', reason: '개인 사유', status: 'pending' },
+                { id: 3, type: '외근', requester: '정수진', dept: '개발1팀', date: '01/28', location: '강남 고객사', reason: '프로젝트 미팅', status: 'pending' },
+                { id: 4, type: '연장근무', requester: '최준혁', dept: '개발1팀', date: '01/27', hours: '3시간', reason: '릴리즈 준비', status: 'pending' },
+                { id: 5, type: '휴가', requester: '송지은', dept: '개발2팀', date: '02/10', days: '0.5일', reason: '병원 방문', status: 'pending' },
+            ]);
+
+            // Calendar schedule data for team members
+            const [teamSchedules, setTeamSchedules] = useState([
+                // Approved schedules
+                { id: 101, type: '연장근무', name: '김철수', dept: '개발1팀', date: '2026-01-20', approved: true },
+                { id: 102, type: '휴가', name: '이영희', dept: '개발1팀', date: '2026-01-22', approved: true },
+                { id: 103, type: '외근', name: '정수진', dept: '개발1팀', date: '2026-01-23', approved: true },
+                { id: 104, type: '출장', name: '최준혁', dept: '개발1팀', date: '2026-01-24', approved: true },
+                { id: 105, type: '연장근무', name: '송지은', dept: '개발2팀', date: '2026-01-25', approved: true },
+                { id: 106, type: '휴가', name: '박민수', dept: '개발1팀', date: '2026-01-29', approved: true },
+                { id: 107, type: '외근', name: '한미래', dept: '개발1팀', date: '2026-01-30', approved: true },
+                { id: 108, type: '연장근무', name: '윤서준', dept: '디자인팀', date: '2026-01-31', approved: true },
+
+                // Pending approval schedules
+                { id: 201, type: '연장근무', name: '김철수', dept: '개발1팀', date: '2026-01-27', approved: false },
+                { id: 202, type: '휴가', name: '이영희', dept: '개발1팀', date: '2026-02-03', approved: false },
+                { id: 203, type: '외근', name: '정수진', dept: '개발1팀', date: '2026-01-28', approved: false },
+                { id: 204, type: '연장근무', name: '최준혁', dept: '개발1팀', date: '2026-01-27', approved: false },
+                { id: 205, type: '휴가', name: '송지은', dept: '개발2팀', date: '2026-02-10', approved: false },
+                { id: 206, type: '결근', name: '한미래', dept: '개발1팀', date: '2026-01-27', approved: true },
+                { id: 207, type: '출장', name: '박민수', dept: '개발1팀', date: '2026-02-05', approved: false },
+                { id: 208, type: '외근', name: '윤서준', dept: '디자인팀', date: '2026-02-06', approved: false },
+            ]);
+
+            const statusConfig = {
+                working: { label: '근무중', color: 'bg-green-100 text-green-700', dot: 'bg-green-500' },
+                leave: { label: '휴가', color: 'bg-purple-100 text-purple-700', dot: 'bg-purple-500' },
+                late: { label: '지각', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+                absent: { label: '미출근', color: 'bg-slate-100 text-slate-500', dot: 'bg-slate-400' },
+                out: { label: '외출', color: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
+            };
+
+            const filteredMembers = selectedTeam === 'all'
+                ? teamMembers
+                : teamMembers.filter(m => m.dept === teams.find(t => t.id === selectedTeam)?.name);
+
+            const todayStats = {
+                total: filteredMembers.length,
+                working: filteredMembers.filter(m => m.status === 'working').length,
+                leave: filteredMembers.filter(m => m.status === 'leave').length,
+                late: filteredMembers.filter(m => m.status === 'late').length,
+                absent: filteredMembers.filter(m => m.status === 'absent').length,
+            };
+
+            const handleApprove = (approval) => {
+                setPendingApprovals(prev => prev.filter(a => a.id !== approval.id));
+                toast.addToast(`${approval.requester}님의 ${approval.type} 신청이 승인되었습니다.`, 'success');
+                setShowApprovalModal(false);
+            };
+
+            const handleReject = (approval) => {
+                setPendingApprovals(prev => prev.filter(a => a.id !== approval.id));
+                toast.addToast(`${approval.requester}님의 ${approval.type} 신청이 반려되었습니다.`, 'error');
+                setShowApprovalModal(false);
+            };
+
+            const handleBulkApprove = () => {
+                const count = pendingApprovals.length;
+                setPendingApprovals([]);
+                toast.addToast(`${count}건의 신청이 일괄 승인되었습니다.`, 'success');
+            };
+
+            const handleApproveSchedule = (schedule) => {
+                setTeamSchedules(prev => prev.map(s =>
+                    s.id === schedule.id ? { ...s, approved: true } : s
+                ));
+                toast.addToast(`${schedule.name}님의 ${schedule.type} 신청이 승인되었습니다.`, 'success');
+                setShowScheduleModal(false);
+            };
+
+            const handleRejectSchedule = (schedule) => {
+                setTeamSchedules(prev => prev.filter(s => s.id !== schedule.id));
+                toast.addToast(`${schedule.name}님의 ${schedule.type} 신청이 반려되었습니다.`, 'error');
+                setShowScheduleModal(false);
+            };
+
+            const downloadTeamReport = () => {
+                const data = [
+                    ['이름', '직급', '부서', '상태', '출근시각', '근무시간', '주간근무'],
+                    ...filteredMembers.map(m => [
+                        m.name, m.position, m.dept,
+                        statusConfig[m.status].label,
+                        m.clockIn, m.workHours, `${m.weeklyHours}h`
+                    ])
+                ];
+
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '팀원현황');
+                XLSX.writeFile(wb, `팀현황_${new Date().toISOString().split('T')[0]}.xlsx`);
+                toast.addToast('팀 근무 관리 리포트가 다운로드되었습니다.', 'success');
+            };
+
+            // Calendar helper functions
+            const getDaysInMonth = (date) => {
+                const year = date.getFullYear();
+                const month = date.getMonth();
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                const daysInMonth = lastDay.getDate();
+                const startDayOfWeek = firstDay.getDay();
+
+                return { daysInMonth, startDayOfWeek, year, month };
+            };
+
+            const getSchedulesForDate = (date) => {
+                const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                return teamSchedules.filter(schedule => {
+                    if (selectedTeam === 'all') return schedule.date === dateStr;
+                    const teamName = teams.find(t => t.id === selectedTeam)?.name;
+                    return schedule.date === dateStr && schedule.dept === teamName;
+                });
+            };
+
+            const previousMonth = () => {
+                setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+            };
+
+            const nextMonth = () => {
+                setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto p-6">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">팀 근무 관리</h1>
+                            <p className="text-slate-500">2026년 1월 27일 (월)</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <select
+                                value={selectedTeam}
+                                onChange={(e) => setSelectedTeam(e.target.value)}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                {teams.map(team => (
+                                    <option key={team.id} value={team.id}>
+                                        {team.name} ({team.count}명)
+                                    </option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={downloadTeamReport}
+                                className="px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                                엑셀 다운로드
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Today Stats */}
+                    <div className="grid grid-cols-5 gap-4 mb-6">
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
+                            <div className="text-3xl font-bold text-slate-800">{todayStats.total}</div>
+                            <div className="text-sm text-slate-500 mt-1">전체 인원</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedTeam('all')}>
+                            <div className="text-3xl font-bold text-green-600">{todayStats.working}</div>
+                            <div className="text-sm text-slate-500 mt-1">근무중</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
+                            <div className="text-3xl font-bold text-purple-600">{todayStats.leave}</div>
+                            <div className="text-sm text-slate-500 mt-1">휴가</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
+                            <div className="text-3xl font-bold text-red-600">{todayStats.late}</div>
+                            <div className="text-sm text-slate-500 mt-1">지각</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
+                            <div className="text-3xl font-bold text-slate-400">{todayStats.absent}</div>
+                            <div className="text-sm text-slate-500 mt-1">미출근</div>
+                        </div>
+                    </div>
+
+                    {viewMode === 'list' ? (
+                        <div className="grid grid-cols-3 gap-6">
+                            {/* Team Members List */}
+                            <div className="col-span-2">
+                                {/* View Mode Toggle */}
+                                <div className="flex gap-2 mb-4">
+                                    <button
+                                        onClick={() => setViewMode('list')}
+                                        className={`flex-1 py-2 rounded-xl font-medium transition-all ${
+                                            viewMode === 'list'
+                                                ? 'bg-blue-600 text-white shadow-md'
+                                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        리스트 뷰
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('calendar')}
+                                        className={`flex-1 py-2 rounded-xl font-medium transition-all ${
+                                            viewMode === 'calendar'
+                                                ? 'bg-blue-600 text-white shadow-md'
+                                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        캘린더 뷰
+                                    </button>
+                                </div>
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div className="p-4 border-b border-slate-100">
+                                    <div className="flex items-center gap-4">
+                                        {['today', 'week', 'month'].map((tab) => (
+                                            <button
+                                                key={tab}
+                                                onClick={() => setActiveTab(tab)}
+                                                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                    activeTab === tab
+                                                        ? 'bg-blue-100 text-blue-700'
+                                                        : 'text-slate-500 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                {tab === 'today' ? '오늘' : tab === 'week' ? '이번 주' : '이번 달'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+                                    {filteredMembers.map((member) => (
+                                        <div key={member.id} className="p-4 hover:bg-slate-50 transition-colors">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="relative">
+                                                        <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                                                            {member.avatar}
+                                                        </div>
+                                                        <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${statusConfig[member.status].dot}`} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-semibold text-slate-800">{member.name}</span>
+                                                            <span className="text-sm text-slate-500">{member.position}</span>
+                                                            {member.warning && (
+                                                                <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded text-xs font-medium animate-pulse">
+                                                                    52h 주의
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-sm text-slate-500">
+                                                            {member.status === 'leave' ? member.leaveType : `출근: ${member.clockIn}`}
+                                                            <span className="mx-2">·</span>
+                                                            {member.dept}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-6">
+                                                    <div className="text-right">
+                                                        <div className="text-sm text-slate-500">오늘 근무</div>
+                                                        <div className="font-semibold text-slate-800">{member.workHours}</div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-sm text-slate-500">주간 근무</div>
+                                                        <div className={`font-semibold ${member.weeklyHours >= 48 ? 'text-red-600' : 'text-slate-800'}`}>
+                                                            {member.weeklyHours}h
+                                                        </div>
+                                                    </div>
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusConfig[member.status].color}`}>
+                                                        {statusConfig[member.status].label}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Weekly Progress */}
+                                            {member.status !== 'leave' && member.status !== 'absent' && (
+                                                <div className="mt-3 ml-16">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-xs text-slate-500">주간 진행률</span>
+                                                        <span className="text-xs font-medium text-slate-700">
+                                                            {member.weeklyHours}h / 52h
+                                                        </span>
+                                                    </div>
+                                                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full rounded-full transition-all ${
+                                                                member.weeklyHours >= 48 ? 'bg-red-500' :
+                                                                member.weeklyHours >= 40 ? 'bg-amber-500' : 'bg-blue-500'
+                                                            }`}
+                                                            style={{ width: `${(member.weeklyHours / 52) * 100}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Pending Approvals */}
+                        <div className="space-y-6">
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold text-slate-800">승인 대기</h3>
+                                    <span className="bg-red-500 text-white px-2 py-1 rounded-full text-xs font-medium">
+                                        {pendingApprovals.length}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                                    {pendingApprovals.map((approval) => (
+                                        <div
+                                            key={approval.id}
+                                            className="p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
+                                            onClick={() => {
+                                                setSelectedApproval(approval);
+                                                setShowApprovalModal(true);
+                                            }}
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="font-medium text-slate-800">{approval.requester}</span>
+                                                <span className="text-xs text-slate-500">{approval.date}</span>
+                                            </div>
+                                            <div className="text-sm text-slate-600 mb-3">
+                                                <span className={`px-2 py-0.5 ${workTypeConfig[approval.type]?.bg || 'bg-blue-100'} ${workTypeConfig[approval.type]?.text || 'text-blue-700'} rounded text-xs font-medium mr-2`}>
+                                                    {approval.type}
+                                                </span>
+                                                {approval.hours && approval.hours}
+                                                {approval.days && approval.days}
+                                                {approval.location && approval.location}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleApprove(approval);
+                                                    }}
+                                                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                                                >
+                                                    승인
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleReject(approval);
+                                                    }}
+                                                    className="flex-1 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                                                >
+                                                    반려
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {pendingApprovals.length === 0 && (
+                                        <div className="text-center py-8 text-slate-400">
+                                            <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p>대기 중인 승인 건이 없습니다</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {pendingApprovals.length > 0 && (
+                                    <button
+                                        onClick={handleBulkApprove}
+                                        className="w-full mt-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                    >
+                                        전체 일괄 승인
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Quick Stats */}
+                            <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 text-white">
+                                <h3 className="font-semibold mb-4">이번 주 팀 통계</h3>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-blue-100">총 근무시간</span>
+                                        <span className="font-bold">232h 30m</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-blue-100">총 연장근무</span>
+                                        <span className="font-bold">12h 45m</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-blue-100">평균 일근무</span>
+                                        <span className="font-bold">8h 15m</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-blue-100">출근율</span>
+                                        <span className="font-bold">94.2%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 52-hour Warning */}
+                            <div className="bg-red-50 rounded-2xl p-6 border border-red-200">
+                                <h3 className="font-semibold text-red-800 mb-4 flex items-center gap-2">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                    52시간 위험군
+                                </h3>
+                                <div className="space-y-3">
+                                    {filteredMembers.filter(m => m.weeklyHours >= 44).map((member) => (
+                                        <div key={member.id} className="flex items-center justify-between p-2 bg-white rounded-lg">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 font-semibold text-sm">
+                                                    {member.avatar}
+                                                </div>
+                                                <span className="font-medium text-slate-800">{member.name}</span>
+                                            </div>
+                                            <span className="text-red-600 font-bold">{member.weeklyHours}h</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    ) : (
+                        /* Calendar View */
+                        <div className="grid grid-cols-3 gap-6">
+                            {/* Calendar */}
+                            <div className="col-span-2">
+                                {/* View Mode Toggle */}
+                                <div className="flex gap-2 mb-4">
+                                    <button
+                                        onClick={() => setViewMode('list')}
+                                        className={`flex-1 py-2 rounded-xl font-medium transition-all ${
+                                            viewMode === 'list'
+                                                ? 'bg-blue-600 text-white shadow-md'
+                                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        리스트 뷰
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('calendar')}
+                                        className={`flex-1 py-2 rounded-xl font-medium transition-all ${
+                                            viewMode === 'calendar'
+                                                ? 'bg-blue-600 text-white shadow-md'
+                                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        캘린더 뷰
+                                    </button>
+                                </div>
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                                    {/* Calendar Header */}
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className="text-xl font-bold text-slate-800">
+                                            {currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월
+                                        </h2>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={previousMonth}
+                                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                            >
+                                                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                                </svg>
+                                            </button>
+                                            <button
+                                                onClick={nextMonth}
+                                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                            >
+                                                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Calendar Grid */}
+                                    <div className="grid grid-cols-7 gap-2">
+                                        {/* Day Headers */}
+                                        {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
+                                            <div key={day} className={`text-center text-sm font-semibold py-2 ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-slate-600'}`}>
+                                                {day}
+                                            </div>
+                                        ))}
+
+                                        {/* Calendar Days */}
+                                        {(() => {
+                                            const { daysInMonth, startDayOfWeek } = getDaysInMonth(currentMonth);
+                                            const days = [];
+
+                                            // Empty cells for days before month starts
+                                            for (let i = 0; i < startDayOfWeek; i++) {
+                                                days.push(<div key={`empty-${i}`} className="h-24" />);
+                                            }
+
+                                            // Days of the month
+                                            for (let day = 1; day <= daysInMonth; day++) {
+                                                const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+                                                const schedules = getSchedulesForDate(date);
+                                                const isToday = date.toDateString() === new Date(2026, 0, 27).toDateString();
+                                                const dayOfWeek = date.getDay();
+
+                                                days.push(
+                                                    <div
+                                                        key={day}
+                                                        className={`h-24 border rounded-lg p-2 ${
+                                                            isToday ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200'
+                                                        } overflow-hidden hover:shadow-md transition-shadow`}
+                                                    >
+                                                        <div className={`text-sm font-semibold mb-1 ${
+                                                            isToday ? 'text-blue-600' :
+                                                            dayOfWeek === 0 ? 'text-red-500' :
+                                                            dayOfWeek === 6 ? 'text-blue-500' : 'text-slate-600'
+                                                        }`}>
+                                                            {day}
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            {schedules.slice(0, 3).map((schedule) => {
+                                                                const config = workTypeConfig[schedule.type];
+                                                                const bgColor = schedule.approved ? config.solid : config.dimmed;
+                                                                const opacity = schedule.approved ? 'opacity-100' : 'opacity-60';
+
+                                                                return (
+                                                                    <div
+                                                                        key={schedule.id}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setSelectedSchedule(schedule);
+                                                                            setShowScheduleModal(true);
+                                                                        }}
+                                                                        className={`${bgColor} ${opacity} text-white text-xs px-2 py-0.5 rounded truncate cursor-pointer hover:scale-105 transition-transform`}
+                                                                        title={`${schedule.name} - ${schedule.type}${schedule.approved ? ' (승인됨)' : ' (대기중)'}`}
+                                                                    >
+                                                                        {schedule.name} {schedule.type}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {schedules.length > 3 && (
+                                                                <div className="text-xs text-slate-500 px-1">
+                                                                    +{schedules.length - 3}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return days;
+                                        })()}
+                                    </div>
+
+                                    {/* Legend */}
+                                    <div className="mt-6 pt-6 border-t border-slate-200">
+                                        <div className="text-sm font-semibold text-slate-700 mb-3">범례</div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {Object.entries(workTypeConfig).map(([type, config]) => (
+                                                <div key={type} className="flex items-center gap-2">
+                                                    <div className="flex gap-1">
+                                                        <div className={`w-4 h-4 ${config.solid} rounded`} title="승인됨" />
+                                                        <div className={`w-4 h-4 ${config.dimmed} opacity-60 rounded`} title="대기중" />
+                                                    </div>
+                                                    <span className="text-sm text-slate-600">{type}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-3 text-xs text-slate-500">
+                                            진한 색상: 승인됨 / 연한 색상: 승인 대기중
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Pending Approvals (Same as list view) */}
+                            <div className="space-y-6">
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-semibold text-slate-800">승인 대기</h3>
+                                        <span className="bg-red-500 text-white px-2 py-1 rounded-full text-xs font-medium">
+                                            {pendingApprovals.length}
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                                        {pendingApprovals.map((approval) => (
+                                            <div
+                                                key={approval.id}
+                                                className="p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
+                                                onClick={() => {
+                                                    setSelectedApproval(approval);
+                                                    setShowApprovalModal(true);
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="font-medium text-slate-800">{approval.requester}</span>
+                                                    <span className="text-xs text-slate-500">{approval.date}</span>
+                                                </div>
+                                                <div className="text-sm text-slate-600 mb-3">
+                                                    <span className={`px-2 py-0.5 ${workTypeConfig[approval.type]?.bg || 'bg-blue-100'} ${workTypeConfig[approval.type]?.text || 'text-blue-700'} rounded text-xs font-medium mr-2`}>
+                                                        {approval.type}
+                                                    </span>
+                                                    {approval.hours && approval.hours}
+                                                    {approval.days && approval.days}
+                                                    {approval.location && approval.location}
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleApprove(approval);
+                                                        }}
+                                                        className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                                                    >
+                                                        승인
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleReject(approval);
+                                                        }}
+                                                        className="flex-1 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                                                    >
+                                                        반려
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {pendingApprovals.length === 0 && (
+                                            <div className="text-center py-8 text-slate-400">
+                                                <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <p>대기 중인 승인 건이 없습니다</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {pendingApprovals.length > 0 && (
+                                        <button
+                                            onClick={handleBulkApprove}
+                                            className="w-full mt-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                        >
+                                            전체 일괄 승인
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Quick Stats */}
+                                <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 text-white">
+                                    <h3 className="font-semibold mb-4">이번 주 팀 통계</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-blue-100">총 근무시간</span>
+                                            <span className="font-bold">232h 30m</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-blue-100">총 연장근무</span>
+                                            <span className="font-bold">12h 45m</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-blue-100">평균 일근무</span>
+                                            <span className="font-bold">8h 15m</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-blue-100">출근율</span>
+                                            <span className="font-bold">94.2%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 52-hour Warning */}
+                                <div className="bg-red-50 rounded-2xl p-6 border border-red-200">
+                                    <h3 className="font-semibold text-red-800 mb-4 flex items-center gap-2">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        52시간 위험군
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {filteredMembers.filter(m => m.weeklyHours >= 44).map((member) => (
+                                            <div key={member.id} className="flex items-center justify-between p-2 bg-white rounded-lg">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 font-semibold text-sm">
+                                                        {member.avatar}
+                                                    </div>
+                                                    <span className="font-medium text-slate-800">{member.name}</span>
+                                                </div>
+                                                <span className="text-red-600 font-bold">{member.weeklyHours}h</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Approval Detail Modal */}
+                    {showApprovalModal && selectedApproval && (
+                        <div
+                            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                            onClick={() => setShowApprovalModal(false)}
+                        >
+                            <div
+                                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="p-6 border-b border-slate-100">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-xl font-bold text-slate-800">신청 상세</h2>
+                                        <button
+                                            onClick={() => setShowApprovalModal(false)}
+                                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                        >
+                                            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+                                        <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xl">
+                                            {selectedApproval.requester[0]}
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-semibold text-slate-800">{selectedApproval.requester}</div>
+                                            <div className="text-sm text-slate-500">{selectedApproval.dept}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">신청 유형</div>
+                                            <div className="font-semibold text-slate-800">{selectedApproval.type}</div>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">신청일</div>
+                                            <div className="font-semibold text-slate-800">{selectedApproval.date}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 rounded-xl">
+                                        <div className="text-sm text-slate-500 mb-1">상세 내용</div>
+                                        <div className="font-semibold text-slate-800">
+                                            {selectedApproval.hours || selectedApproval.days || selectedApproval.location}
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                                        <div className="text-sm text-blue-700 mb-1">신청 사유</div>
+                                        <div className="text-blue-800">{selectedApproval.reason}</div>
+                                    </div>
+                                </div>
+                                <div className="p-6 border-t border-slate-100 flex gap-3">
+                                    <button
+                                        onClick={() => handleReject(selectedApproval)}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                                    >
+                                        반려
+                                    </button>
+                                    <button
+                                        onClick={() => handleApprove(selectedApproval)}
+                                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                    >
+                                        승인
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Schedule Detail Modal */}
+                    {showScheduleModal && selectedSchedule && (
+                        <div
+                            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                            onClick={() => setShowScheduleModal(false)}
+                        >
+                            <div
+                                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="p-6 border-b border-slate-100">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-xl font-bold text-slate-800">신청 상세</h2>
+                                        <button
+                                            onClick={() => setShowScheduleModal(false)}
+                                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                        >
+                                            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+                                        <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl">
+                                            {selectedSchedule.name[0]}
+                                        </div>
+                                        <div>
+                                            <div className="text-lg font-semibold text-slate-800">{selectedSchedule.name}</div>
+                                            <div className="text-sm text-slate-500">{selectedSchedule.dept}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">신청 유형</div>
+                                            <div className={`font-semibold inline-flex px-2 py-1 rounded ${workTypeConfig[selectedSchedule.type]?.bg} ${workTypeConfig[selectedSchedule.type]?.text}`}>
+                                                {selectedSchedule.type}
+                                            </div>
+                                        </div>
+                                        <div className="p-4 bg-slate-50 rounded-xl">
+                                            <div className="text-sm text-slate-500 mb-1">신청일</div>
+                                            <div className="font-semibold text-slate-800">{selectedSchedule.date}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 rounded-xl">
+                                        <div className="text-sm text-slate-500 mb-1">승인 상태</div>
+                                        <div className="font-semibold">
+                                            {selectedSchedule.approved ? (
+                                                <span className="inline-flex items-center gap-1 text-green-600">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    승인됨
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-amber-600">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    승인 대기중
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                {!selectedSchedule.approved && (
+                                    <div className="p-6 border-t border-slate-100 flex gap-3">
+                                        <button
+                                            onClick={() => handleRejectSchedule(selectedSchedule)}
+                                            className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                                        >
+                                            반려
+                                        </button>
+                                        <button
+                                            onClick={() => handleApproveSchedule(selectedSchedule)}
+                                            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                        >
+                                            승인
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const SIcons = {
+            Home: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+            Clock: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Document: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+            Chart: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+            Settings: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+            Bell: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+            Users: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+            Plane: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
+Island: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 4c2-1 5-1 7 1-2 0-4 1-5 3m-2-4c-2-1-5-1-7 1 2 0 4 1 5 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 8c0 4-1 8-2 12" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20c2-2 5-3 8-3s6 1 8 3" /></svg>,
+Timer: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 21a9 9 0 100-18 9 9 0 000 18z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1h6M12 1v2" /></svg>,
+            Clipboard: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+            Building: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
+            Menu: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
+            Search: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+        };
+
+        const AppSidebar = ({ collapsed, setCollapsed, mode }) => {
+            const empItems = [
+                { id:'dashboard', icon:<SIcons.Home />, label:'대시보드', page:'emp-index.html' },
+                { id:'attendance', icon:<SIcons.Clock />, label:'출퇴근 기록', page:'emp-attendance-records.html' },
+                { id:'leave', icon:<SIcons.Island />, label:'휴가관리', page:'emp-leave-management.html' },
+                { id:'overtime', icon:<SIcons.Timer />, label:'연장/휴일 근무', page:'emp-overtime-management.html' },
+                { id:'team', icon:<SIcons.Users />, label:'팀 근무 관리', page:null },
+                { id:'reports', icon:<SIcons.Chart />, label:'리포트', page:'reports.html?mode=employee' },
+                { id:'settings', icon:<SIcons.Settings />, label:'설정', page:'settings.html?mode=employee' },
+            ];
+            const hrItems = [
+                { id:'dashboard', icon:<SIcons.Home />, label:'대시보드', page:'index.html' },
+                { id:'attendance', icon:<SIcons.Clock />, label:'출퇴근 기록', page:'attendance-records.html' },
+                { id:'leave', icon:<SIcons.Island />, label:'휴가 관리', page:'leave-management.html' },
+                { id:'requests', icon:<SIcons.Clipboard />, label:'요청 관리', page:'requests-management.html' },
+                { id:'management', icon:<SIcons.Building />, label:'근무 규칙 관리', page:'management.html' },
+                { id:'company', icon:<SIcons.Building />, label:'회사 규칙', page:'company-settings.html' },
+                { id:'reports', icon:<SIcons.Chart />, label:'리포트', page:'reports.html' },
+                { id:'settings', icon:<SIcons.Settings />, label:'설정', page:'settings.html' },
+            ];
+            const menuItems = mode === 'employee' ? empItems : hrItems;
+            const homePage = mode === 'employee' ? 'emp-index.html' : 'index.html';
+            return (
+                <aside className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 transition-all duration-300 z-40 ${collapsed?'w-20':'w-64'}`}>
+                    <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+                        {!collapsed && <a href={homePage} className="flex items-center gap-3"><div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">S</span></div><span className="font-bold text-slate-800">Suprema T&A</span></a>}
+                        <button onClick={()=>setCollapsed(!collapsed)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><SIcons.Menu /></button>
+                    </div>
+                    <nav className="p-3 space-y-1">
+                        {menuItems.map(item=>(
+                            <button key={item.id} onClick={()=>{if(item.page) window.location.href=item.page;}}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${item.id==='team'?'bg-primary-50 text-primary-600':'text-slate-600 hover:text-slate-800 hover:bg-slate-50'}`}>
+                                <span className={item.id==='team'?'text-primary-600':'text-slate-400'}>{item.icon}</span>
+                                {!collapsed && <span className="font-medium flex-1">{item.label}</span>}
+                            </button>
+                        ))}
+                    </nav>
+                </aside>
+            );
+        };
+
+        const AppHeader = ({ collapsed, mode, setMode }) => (
+            <header className={`fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100 z-30 transition-all duration-300 ${collapsed?'left-20':'left-64'}`}>
+                <div className="h-full px-6 flex items-center justify-end">
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-slate-100 rounded-xl p-1">
+                            <button onClick={()=>setMode('employee')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${mode==='employee'?'bg-white text-primary-600 shadow-sm':'text-slate-600 hover:text-slate-800'}`}>직원</button>
+                            <button onClick={()=>setMode('hr')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${mode==='hr'?'bg-white text-primary-600 shadow-sm':'text-slate-600 hover:text-slate-800'}`}>HR 관리자</button>
+                        </div>
+                        <button className="relative p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                            <SIcons.Bell />
+                            <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">2</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+        );
+
+        const App = () => {
+            const params = new URLSearchParams(window.location.search);
+            const [mode, setModeState] = useState(params.get('mode') || 'employee');
+            const [collapsed, setCollapsed] = useState(false);
+            const setMode = (m) => {
+                window.location.href = m === 'employee' ? 'emp-index.html' : 'index.html';
+            };
+            return (
+                <ToastProvider>
+                    <div className="min-h-screen bg-slate-50">
+                        <AppSidebar collapsed={collapsed} setCollapsed={setCollapsed} mode={mode} />
+                        <AppHeader collapsed={collapsed} mode={mode} setMode={setMode} />
+                        <main className={`pt-16 transition-all duration-300 ${collapsed?'ml-20':'ml-64'}`}>
+                            <div className="p-6"><TeamManagement /></div>
+                        </main>
+                    </div>
+                </ToastProvider>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

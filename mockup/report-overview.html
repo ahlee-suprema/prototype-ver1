@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>리포트 개요</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px -12px rgba(0,0,0,0.15); }
+        .stat-card { transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="bg-slate-50 p-6">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // KPI Card
+        const KPICard = ({ title, value, unit, trend, trendValue, gradient, sparkData }) => {
+            const isPositive = trend === 'up';
+            const gradients = {
+                blue: 'from-blue-500 to-blue-600',
+                green: 'from-emerald-500 to-emerald-600',
+                purple: 'from-purple-500 to-purple-600',
+                amber: 'from-amber-500 to-amber-600',
+                rose: 'from-rose-500 to-rose-600',
+                cyan: 'from-cyan-500 to-cyan-600',
+            };
+
+            return (
+                <div className={`stat-card bg-gradient-to-br ${gradients[gradient]} rounded-2xl p-5 text-white relative overflow-hidden`}>
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-12 translate-x-12" />
+                    <div className="relative z-10">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-white/80 text-sm">{title}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${isPositive ? 'bg-green-400/30' : 'bg-red-400/30'}`}>
+                                {isPositive ? '↑' : '↓'} {trendValue}
+                            </span>
+                        </div>
+                        <div className="text-2xl font-bold">{value}<span className="text-base font-normal ml-1 opacity-80">{unit}</span></div>
+                        <div className="mt-3 flex items-end gap-0.5 h-6">
+                            {sparkData.map((v, i) => (
+                                <div key={i} className="flex-1 bg-white/30 rounded-t" style={{ height: `${(v / Math.max(...sparkData)) * 100}%` }} />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Donut Chart
+        const DonutChart = ({ data, title, centerValue, centerLabel }) => {
+            const total = data.reduce((sum, d) => sum + d.value, 0);
+            let cumulative = 0;
+
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">{title}</h3>
+                    <div className="flex items-center gap-6">
+                        <div className="relative w-32 h-32">
+                            <svg viewBox="0 0 100 100" className="transform -rotate-90">
+                                {data.map((item, idx) => {
+                                    const pct = (item.value / total) * 100;
+                                    const offset = -cumulative;
+                                    cumulative += pct;
+                                    return <circle key={idx} cx="50" cy="50" r="40" fill="transparent" stroke={item.color} strokeWidth="12" strokeDasharray={`${pct} ${100-pct}`} strokeDashoffset={offset} />;
+                                })}
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <span className="text-xl font-bold text-slate-800">{centerValue}</span>
+                                <span className="text-xs text-slate-500">{centerLabel}</span>
+                            </div>
+                        </div>
+                        <div className="flex-1 space-y-2">
+                            {data.map((item, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                                        <span className="text-slate-600">{item.label}</span>
+                                    </div>
+                                    <span className="font-semibold text-slate-800">{item.value}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Simple Bar Chart
+        const BarChart = ({ data, title }) => {
+            const max = Math.max(...data.map(d => d.value));
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">{title}</h3>
+                    <div className="space-y-3">
+                        {data.map((item, idx) => (
+                            <div key={idx}>
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-slate-600">{item.label}</span>
+                                    <span className="font-medium text-slate-800">{item.value}h</span>
+                                </div>
+                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${item.color}`} style={{ width: `${(item.value / max) * 100}%` }} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const ReportOverview = () => {
+            const [realTimeData, setRealTimeData] = useState({ working: 142, leave: 15, late: 3 });
+
+            // 실시간 업데이트 시뮬레이션
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setRealTimeData(prev => ({
+                        working: prev.working + (Math.random() > 0.5 ? 1 : -1),
+                        leave: prev.leave,
+                        late: prev.late + (Math.random() > 0.8 ? 1 : 0),
+                    }));
+                }, 5000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const kpiData = [
+                { title: '총 근무시간', value: '4,280', unit: 'h', trend: 'up', trendValue: '+3.2%', gradient: 'blue', sparkData: [65,70,68,75,72,80,78] },
+                { title: '평균 출근율', value: '94.2', unit: '%', trend: 'up', trendValue: '+1.5%', gradient: 'green', sparkData: [88,92,91,95,93,94,94] },
+                { title: '연장근무', value: '186', unit: 'h', trend: 'down', trendValue: '-8.4%', gradient: 'amber', sparkData: [45,42,38,40,35,32,34] },
+                { title: '휴가 사용률', value: '68.5', unit: '%', trend: 'up', trendValue: '+5.2%', gradient: 'purple', sparkData: [55,58,62,60,65,67,68] },
+                { title: '지각률', value: '2.3', unit: '%', trend: 'down', trendValue: '-0.8%', gradient: 'rose', sparkData: [4,3.5,3.2,3,2.8,2.5,2.3] },
+                { title: '52시간 위험', value: '3', unit: '명', trend: 'down', trendValue: '-2명', gradient: 'cyan', sparkData: [8,7,6,5,4,4,3] },
+            ];
+
+            const attendanceData = [
+                { label: '정상 출근', value: realTimeData.working, color: '#10b981' },
+                { label: '지각', value: realTimeData.late, color: '#ef4444' },
+                { label: '휴가', value: realTimeData.leave, color: '#8b5cf6' },
+                { label: '연장근무', value: 32, color: '#f59e0b' },
+            ];
+
+            const overtimeData = [
+                { label: '개발1팀', value: 45, color: 'bg-blue-500' },
+                { label: '개발2팀', value: 38, color: 'bg-blue-400' },
+                { label: '디자인팀', value: 28, color: 'bg-purple-500' },
+                { label: '마케팅팀', value: 22, color: 'bg-green-500' },
+                { label: '영업팀', value: 35, color: 'bg-amber-500' },
+            ];
+
+            const handleExport = () => {
+                const data = [['지표', '값'], ...kpiData.map(k => [k.title, k.value + k.unit])];
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'KPI');
+                XLSX.writeFile(wb, `리포트_개요_${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">리포트 개요</h1>
+                            <p className="text-slate-500 text-sm">실시간 근태 현황 대시보드</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                실시간
+                            </div>
+                            <button onClick={handleExport} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
+                                엑셀 다운로드
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                        {kpiData.map((kpi, idx) => <KPICard key={idx} {...kpi} />)}
+                    </div>
+
+                    {/* Charts */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <DonutChart data={attendanceData} title="오늘 출퇴근 현황" centerValue={realTimeData.working + realTimeData.leave + realTimeData.late + 32} centerLabel="총 인원" />
+                        <BarChart data={overtimeData} title="부서별 연장근무 (이번 주)" />
+                    </div>
+
+                    {/* Footer */}
+                    <div className="mt-6 p-3 bg-blue-50 rounded-xl text-sm text-blue-700 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        마지막 업데이트: {new Date().toLocaleTimeString('ko-KR')} | 5초마다 자동 갱신
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ReportOverview />);
+    </script>
+</body>
+</html>
