@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>출퇴근 기록</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 p-6">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState } = React;
+
+        const Attendance = () => {
+            const [period, setPeriod] = useState('month');
+
+            const records = [
+                { date: '2026-01-27', day: '월', clockIn: '08:15', clockOut: '-', hours: '진행중', status: 'working' },
+                { date: '2026-01-24', day: '금', clockIn: '08:05', clockOut: '17:30', hours: '8h 25m', status: 'normal' },
+                { date: '2026-01-23', day: '목', clockIn: '08:45', clockOut: '19:00', hours: '9h 15m', status: 'overtime' },
+                { date: '2026-01-22', day: '수', clockIn: '09:15', clockOut: '18:00', hours: '7h 45m', status: 'late' },
+                { date: '2026-01-21', day: '화', clockIn: '08:00', clockOut: '17:00', hours: '8h 0m', status: 'normal' },
+                { date: '2026-01-20', day: '월', clockIn: '-', clockOut: '-', hours: '-', status: 'leave' },
+            ];
+
+            const statusConfig = {
+                working: { label: '근무중', color: 'bg-green-100 text-green-700' },
+                normal: { label: '정상', color: 'bg-blue-100 text-blue-700' },
+                late: { label: '지각', color: 'bg-red-100 text-red-700' },
+                overtime: { label: '연장', color: 'bg-amber-100 text-amber-700' },
+                leave: { label: '휴가', color: 'bg-purple-100 text-purple-700' },
+            };
+
+            const handleExport = () => {
+                const data = [
+                    ['날짜', '요일', '출근', '퇴근', '근무시간', '상태'],
+                    ...records.map(r => [r.date, r.day, r.clockIn, r.clockOut, r.hours, statusConfig[r.status].label])
+                ];
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '출퇴근기록');
+                XLSX.writeFile(wb, `출퇴근기록_${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
+
+            return (
+                <div className="max-w-5xl mx-auto">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">출퇴근 기록</h1>
+                            <p className="text-slate-500 text-sm">나의 출퇴근 이력을 확인합니다</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="flex bg-slate-100 rounded-xl p-1">
+                                {['week', 'month'].map(p => (
+                                    <button key={p} onClick={() => setPeriod(p)} className={`px-4 py-2 rounded-lg text-sm font-medium ${period === p ? 'bg-white shadow-sm' : ''}`}>
+                                        {p === 'week' ? '주간' : '월간'}
+                                    </button>
+                                ))}
+                            </div>
+                            <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700">
+                                엑셀 다운로드
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Summary */}
+                    <div className="grid grid-cols-4 gap-4 mb-6">
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center">
+                            <div className="text-2xl font-bold text-slate-800">22</div>
+                            <div className="text-sm text-slate-500">근무일</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center">
+                            <div className="text-2xl font-bold text-green-600">168h</div>
+                            <div className="text-sm text-slate-500">총 근무시간</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center">
+                            <div className="text-2xl font-bold text-amber-600">8h</div>
+                            <div className="text-sm text-slate-500">연장근무</div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-center">
+                            <div className="text-2xl font-bold text-red-600">1</div>
+                            <div className="text-sm text-slate-500">지각</div>
+                        </div>
+                    </div>
+
+                    {/* Records Table */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-100">
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">날짜</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">요일</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">출근</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">퇴근</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">근무시간</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">상태</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {records.map((record, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 text-sm text-slate-800 font-medium">{record.date}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-600">{record.day}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-800">{record.clockIn}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-800">{record.clockOut}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-800">{record.hours}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusConfig[record.status].color}`}>
+                                                {statusConfig[record.status].label}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Attendance />);
+    </script>
+</body>
+</html>

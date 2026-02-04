@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연장근무</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 p-6">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState } = React;
+
+        const OvertimeManagement = () => {
+            const weeklyLimit = { used: 8.5, max: 12 };
+
+            const history = [
+                { id: 1, date: '2026-01-27', hours: 2, reason: '프로젝트 마감', status: 'pending' },
+                { id: 2, date: '2026-01-23', hours: 3, reason: '긴급 버그 수정', status: 'approved' },
+                { id: 3, date: '2026-01-20', hours: 1.5, reason: '고객 미팅 준비', status: 'approved' },
+            ];
+
+            const statusConfig = {
+                approved: { label: '승인', color: 'bg-green-100 text-green-700' },
+                pending: { label: '대기', color: 'bg-amber-100 text-amber-700' },
+                rejected: { label: '반려', color: 'bg-red-100 text-red-700' },
+            };
+
+            return (
+                <div className="max-w-5xl mx-auto">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">연장근무</h1>
+                            <p className="text-slate-500 text-sm">연장근무 현황 및 신청</p>
+                        </div>
+                        <a href="overtime-request.html" className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
+                            연장근무 신청
+                        </a>
+                    </div>
+
+                    {/* Weekly Status */}
+                    <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 mb-6 text-white">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <div className="text-amber-100 text-sm mb-1">이번 주 연장근무</div>
+                                <div className="text-4xl font-bold">{weeklyLimit.used}h / {weeklyLimit.max}h</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-amber-100 text-sm mb-1">잔여 가능</div>
+                                <div className="text-3xl font-bold">{weeklyLimit.max - weeklyLimit.used}h</div>
+                            </div>
+                        </div>
+                        <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+                            <div className="h-full bg-white rounded-full" style={{ width: `${(weeklyLimit.used / weeklyLimit.max) * 100}%` }} />
+                        </div>
+                    </div>
+
+                    {/* History */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div className="p-4 border-b border-slate-100">
+                            <h3 className="font-semibold text-slate-800">연장근무 신청 내역</h3>
+                        </div>
+                        <div className="divide-y divide-slate-100">
+                            {history.map(item => (
+                                <div key={item.id} className="p-4 hover:bg-slate-50">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 font-bold">
+                                                {item.hours}h
+                                            </div>
+                                            <div>
+                                                <div className="font-medium text-slate-800">{item.date}</div>
+                                                <div className="text-sm text-slate-500">{item.reason}</div>
+                                            </div>
+                                        </div>
+                                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusConfig[item.status].color}`}>
+                                            {statusConfig[item.status].label}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<OvertimeManagement />);
+    </script>
+</body>
+</html>

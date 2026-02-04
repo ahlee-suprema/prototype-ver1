@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설정 - Suprema T&A</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toggle-switch {
+            transition: background-color 0.3s ease;
+        }
+        .toggle-slider {
+            transition: transform 0.3s ease;
+        }
+        .setting-item {
+            transition: all 0.2s ease;
+        }
+        .setting-item:hover {
+            background-color: #f8fafc;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext } = React;
+
+        // Toast Context
+        const ToastContext = createContext();
+        const useToast = () => useContext(ToastContext);
+
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+
+            const addToast = (message, type = 'success') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, message, type }]);
+                setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+            };
+
+            return (
+                <ToastContext.Provider value={{ addToast }}>
+                    {children}
+                    <div className="fixed bottom-4 right-4 z-50 space-y-2">
+                        {toasts.map(toast => (
+                            <div key={toast.id} className={`toast px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
+                                toast.type === 'success' ? 'bg-green-500 text-white' :
+                                toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-slate-800 text-white'
+                            }`}>
+                                {toast.type === 'success' && (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                                {toast.message}
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+
+        // Toggle Switch Component
+        const Toggle = ({ enabled, onChange, label, description }) => (
+            <div className="setting-item flex items-center justify-between p-4 rounded-xl">
+                <div className="flex-1">
+                    <div className="font-medium text-slate-800">{label}</div>
+                    {description && <div className="text-sm text-slate-500 mt-1">{description}</div>}
+                </div>
+                <button
+                    onClick={() => onChange(!enabled)}
+                    className={`toggle-switch relative w-14 h-8 rounded-full ${enabled ? 'bg-blue-600' : 'bg-slate-300'}`}
+                >
+                    <div className={`toggle-slider absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md ${enabled ? 'transform translate-x-6' : ''}`} />
+                </button>
+            </div>
+        );
+
+        // Setting Section Component
+        const SettingSection = ({ title, icon, children }) => (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6">
+                <div className="p-4 border-b border-slate-100 flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                        {icon}
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
+                </div>
+                <div className="divide-y divide-slate-100">
+                    {children}
+                </div>
+            </div>
+        );
+
+        // Select Input Component
+        const SelectSetting = ({ label, description, value, onChange, options }) => (
+            <div className="setting-item flex items-center justify-between p-4">
+                <div className="flex-1">
+                    <div className="font-medium text-slate-800">{label}</div>
+                    {description && <div className="text-sm text-slate-500 mt-1">{description}</div>}
+                </div>
+                <select
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="px-4 py-2 bg-slate-100 border-0 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    {options.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                </select>
+            </div>
+        );
+
+        // Sidebar Icons
+        const SIcons = {
+            Home: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+            Clock: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Document: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+            Chart: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+            SettingsIcon: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+            Bell: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+            Users: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+            Plane: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
+Island: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 4c2-1 5-1 7 1-2 0-4 1-5 3m-2-4c-2-1-5-1-7 1 2 0 4 1 5 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 8c0 4-1 8-2 12" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20c2-2 5-3 8-3s6 1 8 3" /></svg>,
+Timer: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 21a9 9 0 100-18 9 9 0 000 18z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1h6M12 1v2" /></svg>,
+            Clipboard: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+            Building: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
+            Menu: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
+            Search: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+        };
+
+        const AppSidebar = ({ collapsed, setCollapsed, mode }) => {
+            const empItems = [
+                { id:'dashboard', icon:<SIcons.Home />, label:'대시보드', page:'emp-index.html' },
+                { id:'attendance', icon:<SIcons.Clock />, label:'출퇴근 기록', page:'emp-attendance-records.html' },
+                { id:'leave', icon:<SIcons.Island />, label:'휴가관리', page:'emp-leave-management.html' },
+                { id:'overtime', icon:<SIcons.Timer />, label:'연장/휴일 근무', page:'emp-overtime-management.html' },
+                { id:'team', icon:<SIcons.Users />, label:'팀 근무 관리', page:'team-management.html?mode=employee' },
+                { id:'reports', icon:<SIcons.Chart />, label:'리포트', page:'reports.html?mode=employee' },
+                { id:'settings', icon:<SIcons.SettingsIcon />, label:'설정', page:null },
+            ];
+            const hrItems = [
+                { id:'dashboard', icon:<SIcons.Home />, label:'대시보드', page:'index.html' },
+                { id:'attendance', icon:<SIcons.Clock />, label:'출퇴근 기록', page:'attendance-records.html' },
+                { id:'leave', icon:<SIcons.Island />, label:'휴가 관리', page:'leave-management.html' },
+                { id: 'overtime', icon: <SIcons.Timer />, label: '연장/휴일근무', page: 'overtime-management.html' },
+                { id:'requests', icon:<SIcons.Clipboard />, label:'요청 관리', page:'requests-management.html' },
+                { id:'management', icon:<SIcons.Building />, label:'근무 규칙 관리', page:'management.html' },
+                { id:'company', icon:<SIcons.Building />, label:'회사 규칙', page:'company-settings.html' },
+                { id:'reports', icon:<SIcons.Chart />, label:'리포트', page:'reports.html?mode=hr' },
+                { id:'settings', icon:<SIcons.SettingsIcon />, label:'설정', page:null },
+            ];
+            const menuItems = mode === 'employee' ? empItems : hrItems;
+            const homePage = mode === 'employee' ? 'emp-index.html' : 'index.html';
+            return (
+                <aside className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 transition-all duration-300 z-40 ${collapsed?'w-20':'w-64'}`}>
+                    <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+                        {!collapsed && <a href={homePage} className="flex items-center gap-3"><div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">S</span></div><span className="font-bold text-slate-800">Suprema T&A</span></a>}
+                        <button onClick={()=>setCollapsed(!collapsed)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><SIcons.Menu /></button>
+                    </div>
+                    <nav className="p-3 space-y-1">
+                        {menuItems.map(item=>(
+                            <button key={item.id} onClick={()=>{if(item.page) window.location.href=item.page;}}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${item.id==='settings'?'bg-blue-50 text-blue-600':'text-slate-600 hover:text-slate-800 hover:bg-slate-50'}`}>
+                                <span className={item.id==='settings'?'text-blue-600':'text-slate-400'}>{item.icon}</span>
+                                {!collapsed && <span className="font-medium flex-1">{item.label}</span>}
+                            </button>
+                        ))}
+                    </nav>
+                </aside>
+            );
+        };
+
+        const AppHeader = ({ collapsed, mode, setMode }) => (
+            <header className={`fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100 z-30 transition-all duration-300 ${collapsed?'left-20':'left-64'}`}>
+                <div className="h-full px-6 flex items-center justify-end">
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-slate-100 rounded-xl p-1">
+                            <button onClick={()=>setMode('employee')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${mode==='employee'?'bg-white text-blue-600 shadow-sm':'text-slate-600 hover:text-slate-800'}`}>직원</button>
+                            <button onClick={()=>setMode('hr')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${mode==='hr'?'bg-white text-blue-600 shadow-sm':'text-slate-600 hover:text-slate-800'}`}>HR 관리자</button>
+                        </div>
+                        <button className="relative p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                            <SIcons.Bell />
+                            <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">2</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+        );
+
+        const Settings = ({ userRole }) => {
+            const toast = useToast();
+            const [activeTab, setActiveTab] = useState('profile');
+
+            // Profile Settings
+            const [profile, setProfile] = useState({
+                name: '김호준',
+                email: 'hjkim@suprema.co.kr',
+                phone: '010-1234-5678',
+                department: '개발1팀',
+                position: '선임',
+                employeeId: 'EMP-2024-0127',
+            });
+
+            // Notification Settings
+            const [notifications, setNotifications] = useState({
+                emailNotifications: true,
+                pushNotifications: true,
+                smsNotifications: false,
+                clockInReminder: true,
+                clockOutReminder: true,
+                leaveApproval: true,
+                overtimeAlert: true,
+                weeklyReport: true,
+                monthlyReport: false,
+            });
+
+            // Work Settings
+            const [workSettings, setWorkSettings] = useState({
+                defaultWorkStart: '08:00',
+                defaultWorkEnd: '17:00',
+                breakTime: 60,
+                overtimeThreshold: 30,
+                autoClockOut: false,
+                flexibleWork: false,
+                remoteWork: false,
+                proxy: '',
+            });
+
+            // Display Settings
+            const [display, setDisplay] = useState({
+                theme: 'light',
+                language: 'ko',
+                dateFormat: 'YYYY-MM-DD',
+                timeFormat: '24h',
+                firstDayOfWeek: 'monday',
+            });
+
+            // Security Settings
+            const [security, setSecurity] = useState({
+                twoFactorAuth: false,
+                biometricLogin: true,
+                sessionTimeout: '30',
+                loginNotification: true,
+            });
+
+            const handleSave = () => {
+                toast.addToast('설정이 저장되었습니다.', 'success');
+            };
+
+            const handleProfileSave = () => {
+                toast.addToast('프로필이 업데이트되었습니다.', 'success');
+            };
+
+            const tabs = [
+                { id: 'profile', label: '프로필', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
+                { id: 'notifications', label: '알림', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg> },
+                { id: 'work', label: '근무 설정', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+                { id: 'display', label: '화면 설정', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg> },
+                { id: 'security', label: '보안', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg> },
+            ];
+
+            const renderProfileTab = () => (
+                <div className="space-y-6">
+                    {/* Profile Card */}
+                    <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-32 translate-x-32" />
+                        <div className="relative z-10 flex items-center gap-6">
+                            <div className="w-24 h-24 bg-white/20 rounded-2xl flex items-center justify-center text-4xl font-bold">
+                                {profile.name[0]}
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-bold mb-1">{profile.name}</h2>
+                                <p className="text-blue-100">{profile.department} · {profile.position}</p>
+                                <p className="text-blue-200 text-sm mt-2">사번: {profile.employeeId}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Profile Form */}
+                    <SettingSection
+                        title="기본 정보"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+                    >
+                        <div className="p-4 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">이름</label>
+                                    <input
+                                        type="text"
+                                        value={profile.name}
+                                        onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">사번</label>
+                                    <input
+                                        type="text"
+                                        value={profile.employeeId}
+                                        disabled
+                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-500"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">이메일</label>
+                                    <input
+                                        type="email"
+                                        value={profile.email}
+                                        onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">전화번호</label>
+                                    <input
+                                        type="tel"
+                                        value={profile.phone}
+                                        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">부서</label>
+                                    <input
+                                        type="text"
+                                        value={profile.department}
+                                        disabled
+                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">직급</label>
+                                    <input
+                                        type="text"
+                                        value={profile.position}
+                                        disabled
+                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-500"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleProfileSave}
+                                className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                            >
+                                프로필 저장
+                            </button>
+                        </div>
+                    </SettingSection>
+                </div>
+            );
+
+            const renderNotificationsTab = () => (
+                <div className="space-y-6">
+                    <SettingSection
+                        title="알림 채널"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>}
+                    >
+                        <Toggle
+                            label="이메일 알림"
+                            description="중요 알림을 이메일로 받습니다"
+                            enabled={notifications.emailNotifications}
+                            onChange={(v) => setNotifications({ ...notifications, emailNotifications: v })}
+                        />
+                        <Toggle
+                            label="푸시 알림"
+                            description="모바일 푸시 알림을 받습니다"
+                            enabled={notifications.pushNotifications}
+                            onChange={(v) => setNotifications({ ...notifications, pushNotifications: v })}
+                        />
+                        <Toggle
+                            label="SMS 알림"
+                            description="긴급 알림을 SMS로 받습니다"
+                            enabled={notifications.smsNotifications}
+                            onChange={(v) => setNotifications({ ...notifications, smsNotifications: v })}
+                        />
+                    </SettingSection>
+
+                    <SettingSection
+                        title="근태 알림"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                    >
+                        <Toggle
+                            label="출근 리마인더"
+                            description="출근 시간 10분 전에 알림을 받습니다"
+                            enabled={notifications.clockInReminder}
+                            onChange={(v) => setNotifications({ ...notifications, clockInReminder: v })}
+                        />
+                        <Toggle
+                            label="퇴근 리마인더"
+                            description="퇴근 시간에 알림을 받습니다"
+                            enabled={notifications.clockOutReminder}
+                            onChange={(v) => setNotifications({ ...notifications, clockOutReminder: v })}
+                        />
+                        <Toggle
+                            label="휴가 승인 알림"
+                            description="휴가 신청 승인/반려 시 알림을 받습니다"
+                            enabled={notifications.leaveApproval}
+                            onChange={(v) => setNotifications({ ...notifications, leaveApproval: v })}
+                        />
+                        <Toggle
+                            label="연장근무 경고"
+                            description="주 52시간 초과 위험 시 알림을 받습니다"
+                            enabled={notifications.overtimeAlert}
+                            onChange={(v) => setNotifications({ ...notifications, overtimeAlert: v })}
+                        />
+                    </SettingSection>
+
+                    <SettingSection
+                        title="리포트 알림"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
+                    >
+                        <Toggle
+                            label="주간 리포트"
+                            description="매주 월요일 근태 요약 리포트를 받습니다"
+                            enabled={notifications.weeklyReport}
+                            onChange={(v) => setNotifications({ ...notifications, weeklyReport: v })}
+                        />
+                        <Toggle
+                            label="월간 리포트"
+                            description="매월 1일 근태 요약 리포트를 받습니다"
+                            enabled={notifications.monthlyReport}
+                            onChange={(v) => setNotifications({ ...notifications, monthlyReport: v })}
+                        />
+                    </SettingSection>
+                </div>
+            );
+
+            const renderWorkTab = () => (
+                <div className="space-y-6">
+                    {/* Only show 근무 시간 and 근무 옵션 for HR 관리자 */}
+                    {userRole === 'hr' && (
+                        <>
+                            <SettingSection
+                                title="근무 시간"
+                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                            >
+                                <div className="p-4 grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">기본 출근 시간</label>
+                                        <input
+                                            type="time"
+                                            value={workSettings.defaultWorkStart}
+                                            onChange={(e) => setWorkSettings({ ...workSettings, defaultWorkStart: e.target.value })}
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">기본 퇴근 시간</label>
+                                        <input
+                                            type="time"
+                                            value={workSettings.defaultWorkEnd}
+                                            onChange={(e) => setWorkSettings({ ...workSettings, defaultWorkEnd: e.target.value })}
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                                <SelectSetting
+                                    label="점심 휴게시간"
+                                    description="점심 휴게시간을 설정합니다"
+                                    value={workSettings.breakTime}
+                                    onChange={(v) => setWorkSettings({ ...workSettings, breakTime: parseInt(v) })}
+                                    options={[
+                                        { value: 30, label: '30분' },
+                                        { value: 60, label: '1시간' },
+                                        { value: 90, label: '1시간 30분' },
+                                    ]}
+                                />
+                                <SelectSetting
+                                    label="연장근무 시작 기준"
+                                    description="퇴근 후 이 시간이 지나면 연장근무로 인정"
+                                    value={workSettings.overtimeThreshold}
+                                    onChange={(v) => setWorkSettings({ ...workSettings, overtimeThreshold: parseInt(v) })}
+                                    options={[
+                                        { value: 0, label: '즉시' },
+                                        { value: 30, label: '30분 후' },
+                                        { value: 60, label: '1시간 후' },
+                                    ]}
+                                />
+                            </SettingSection>
+
+                            <SettingSection
+                                title="근무 옵션"
+                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+                            >
+                                <Toggle
+                                    label="자동 퇴근 처리"
+                                    description="퇴근 미기록 시 자동으로 정시 퇴근 처리"
+                                    enabled={workSettings.autoClockOut}
+                                    onChange={(v) => setWorkSettings({ ...workSettings, autoClockOut: v })}
+                                />
+                                <Toggle
+                                    label="유연 근무제"
+                                    description="출퇴근 시간을 유연하게 조정합니다"
+                                    enabled={workSettings.flexibleWork}
+                                    onChange={(v) => setWorkSettings({ ...workSettings, flexibleWork: v })}
+                                />
+                                <Toggle
+                                    label="재택근무 모드"
+                                    description="재택근무 시 위치 확인을 건너뜁니다"
+                                    enabled={workSettings.remoteWork}
+                                    onChange={(v) => setWorkSettings({ ...workSettings, remoteWork: v })}
+                                />
+                            </SettingSection>
+                        </>
+                    )}
+
+                    <SettingSection
+                        title="팀 관리 설정"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>}
+                    >
+                        <SelectSetting
+                            label="대결인"
+                            description="부재시 결재를 대신 처리할 담당자를 지정합니다"
+                            value={workSettings.proxy}
+                            onChange={(v) => setWorkSettings({ ...workSettings, proxy: v })}
+                            options={[
+                                { value: '', label: '선택 안 함' },
+                                { value: 'park_js', label: '박지성 (개발1팀 · 책임)' },
+                                { value: 'lee_sm', label: '이서민 (개발1팀 · 선임)' },
+                                { value: 'choi_jh', label: '최지훈 (개발1팀 · 주임)' },
+                                { value: 'kang_yj', label: '강유진 (개발1팀 · 사원)' },
+                                { value: 'jung_mk', label: '정민규 (개발2팀 · 선임)' },
+                            ]}
+                        />
+                    </SettingSection>
+                </div>
+            );
+
+            const renderDisplayTab = () => (
+                <div className="space-y-6">
+                    <SettingSection
+                        title="테마 & 언어"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>}
+                    >
+                        <SelectSetting
+                            label="테마"
+                            description="화면 테마를 선택합니다"
+                            value={display.theme}
+                            onChange={(v) => setDisplay({ ...display, theme: v })}
+                            options={[
+                                { value: 'light', label: '라이트 모드' },
+                                { value: 'dark', label: '다크 모드' },
+                                { value: 'system', label: '시스템 설정' },
+                            ]}
+                        />
+                        <SelectSetting
+                            label="언어"
+                            description="인터페이스 언어를 선택합니다"
+                            value={display.language}
+                            onChange={(v) => setDisplay({ ...display, language: v })}
+                            options={[
+                                { value: 'ko', label: '한국어' },
+                                { value: 'en', label: 'English' },
+                                { value: 'ja', label: '日本語' },
+                            ]}
+                        />
+                    </SettingSection>
+
+                    <SettingSection
+                        title="날짜 & 시간"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
+                    >
+                        <SelectSetting
+                            label="날짜 형식"
+                            value={display.dateFormat}
+                            onChange={(v) => setDisplay({ ...display, dateFormat: v })}
+                            options={[
+                                { value: 'YYYY-MM-DD', label: '2026-01-27' },
+                                { value: 'DD/MM/YYYY', label: '27/01/2026' },
+                                { value: 'MM/DD/YYYY', label: '01/27/2026' },
+                            ]}
+                        />
+                        <SelectSetting
+                            label="시간 형식"
+                            value={display.timeFormat}
+                            onChange={(v) => setDisplay({ ...display, timeFormat: v })}
+                            options={[
+                                { value: '24h', label: '24시간 (15:30)' },
+                                { value: '12h', label: '12시간 (3:30 PM)' },
+                            ]}
+                        />
+                        <SelectSetting
+                            label="주 시작 요일"
+                            value={display.firstDayOfWeek}
+                            onChange={(v) => setDisplay({ ...display, firstDayOfWeek: v })}
+                            options={[
+                                { value: 'sunday', label: '일요일' },
+                                { value: 'monday', label: '월요일' },
+                            ]}
+                        />
+                    </SettingSection>
+                </div>
+            );
+
+            const renderSecurityTab = () => (
+                <div className="space-y-6">
+                    <SettingSection
+                        title="인증"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>}
+                    >
+                        <Toggle
+                            label="2단계 인증"
+                            description="로그인 시 추가 인증을 요구합니다"
+                            enabled={security.twoFactorAuth}
+                            onChange={(v) => setSecurity({ ...security, twoFactorAuth: v })}
+                        />
+                        <Toggle
+                            label="생체 인식 로그인"
+                            description="지문 또는 얼굴 인식으로 로그인합니다"
+                            enabled={security.biometricLogin}
+                            onChange={(v) => setSecurity({ ...security, biometricLogin: v })}
+                        />
+                        <Toggle
+                            label="로그인 알림"
+                            description="새로운 기기에서 로그인 시 알림을 받습니다"
+                            enabled={security.loginNotification}
+                            onChange={(v) => setSecurity({ ...security, loginNotification: v })}
+                        />
+                    </SettingSection>
+
+                    <SettingSection
+                        title="세션"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
+                    >
+                        <SelectSetting
+                            label="자동 로그아웃"
+                            description="일정 시간 미사용 시 자동 로그아웃"
+                            value={security.sessionTimeout}
+                            onChange={(v) => setSecurity({ ...security, sessionTimeout: v })}
+                            options={[
+                                { value: '15', label: '15분' },
+                                { value: '30', label: '30분' },
+                                { value: '60', label: '1시간' },
+                                { value: 'never', label: '사용 안 함' },
+                            ]}
+                        />
+                    </SettingSection>
+
+                    <SettingSection
+                        title="비밀번호"
+                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>}
+                    >
+                        <div className="p-4">
+                            <button
+                                onClick={() => toast.addToast('비밀번호 변경 메일이 발송되었습니다.', 'success')}
+                                className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                            >
+                                비밀번호 변경
+                            </button>
+                        </div>
+                    </SettingSection>
+                </div>
+            );
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    {/* Header */}
+                    <div className="mb-8">
+                        <h1 className="text-2xl font-bold text-slate-800">설정</h1>
+                        <p className="text-slate-500">시스템 환경설정을 관리합니다</p>
+                    </div>
+
+                    <div className="flex gap-6">
+                        {/* Sidebar */}
+                        <div className="w-64 flex-shrink-0">
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                                <nav className="space-y-1">
+                                    {tabs.map((tab) => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setActiveTab(tab.id)}
+                                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                                                activeTab === tab.id
+                                                    ? 'bg-blue-50 text-blue-600'
+                                                    : 'text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <span className={activeTab === tab.id ? 'text-blue-600' : 'text-slate-400'}>
+                                                {tab.icon}
+                                            </span>
+                                            <span className="font-medium">{tab.label}</span>
+                                        </button>
+                                    ))}
+                                </nav>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1">
+                            {activeTab === 'profile' && renderProfileTab()}
+                            {activeTab === 'notifications' && renderNotificationsTab()}
+                            {activeTab === 'work' && renderWorkTab()}
+                            {activeTab === 'display' && renderDisplayTab()}
+                            {activeTab === 'security' && renderSecurityTab()}
+
+                            {/* Save Button */}
+                            <div className="mt-6 flex justify-end">
+                                <button
+                                    onClick={handleSave}
+                                    className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                >
+                                    변경사항 저장
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const params = new URLSearchParams(window.location.search);
+            const [mode, setModeState] = useState(params.get('mode') || 'hr');
+            const [collapsed, setCollapsed] = useState(false);
+            const setMode = (m) => {
+                window.location.href = m === 'employee' ? 'emp-index.html' : 'index.html';
+            };
+            return (
+                <ToastProvider>
+                    <div className="min-h-screen bg-slate-50">
+                        <AppSidebar collapsed={collapsed} setCollapsed={setCollapsed} mode={mode} />
+                        <AppHeader collapsed={collapsed} mode={mode} setMode={setMode} />
+                        <main className={`pt-16 transition-all duration-300 ${collapsed?'ml-20':'ml-64'}`}>
+                            <div className="p-6"><Settings userRole={mode} /></div>
+                        </main>
+                    </div>
+                </ToastProvider>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

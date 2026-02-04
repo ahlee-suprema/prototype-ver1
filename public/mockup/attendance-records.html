@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suprema T&A - 출퇴근 기록</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .nav-item { transition: all 0.2s ease; }
+        .nav-item:hover { background: rgba(37, 99, 235, 0.1); }
+        .nav-item.active { background: rgba(37, 99, 235, 0.15); border-right: 3px solid #2563eb; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .table-container { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; min-width: 2000px; }
+        th { position: sticky; top: 0; background: #f8fafc; z-index: 10; }
+        .status-badge { display: inline-flex; align-items: center; padding: 0.25rem 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 600; }
+        .status-late { background: #fef3c7; color: #92400e; }
+        .status-early { background: #dbeafe; color: #1e40af; }
+        .status-normal { background: #d1fae5; color: #065f46; }
+        .status-absent { background: #fee2e2; color: #991b1b; }
+        .status-overtime { background: #e0e7ff; color: #3730a3; }
+        .approval-pending { background: #fef3c7; color: #92400e; }
+        .approval-approved { background: #d1fae5; color: #065f46; }
+        .approval-rejected { background: #fee2e2; color: #991b1b; }
+        .toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 antialiased">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // Modal Component
+        const Modal = ({ open, onClose, title, children }) => {
+            if (!open) return null;
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-slate-800">{title}</h3>
+                            <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+                                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        {children}
+                    </div>
+                </div>
+            );
+        };
+
+        // Toast Component
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 3000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            return (
+                <div className={`toast fixed bottom-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
+                    type === 'success' ? 'bg-green-500 text-white' :
+                    type === 'error' ? 'bg-red-500 text-white' :
+                    'bg-slate-800 text-white'
+                }`}>
+                    {type === 'success' && (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                    )}
+                    {message}
+                </div>
+            );
+        };
+
+        // Icons
+        const Icons = {
+            Home: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+            ),
+            Clock: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            ),
+            Calendar: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            ),
+            Document: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+            ),
+            Chart: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+            ),
+            Settings: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            ),
+            Bell: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+            ),
+            Users: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            ),
+            Plane: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+            ),
+Island: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 4c2-1 5-1 7 1-2 0-4 1-5 3m-2-4c-2-1-5-1-7 1 2 0 4 1 5 3" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 8c0 4-1 8-2 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20c2-2 5-3 8-3s6 1 8 3" />
+                </svg>
+            ),
+            Timer: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1h6M12 1v2" />
+                </svg>
+            ),
+            Briefcase: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            ),
+            Menu: () => (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            ),
+            Search: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            ),
+            Download: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+            ),
+            Clipboard: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+            ),
+            Check: () => (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+            ),
+            X: () => (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            ),
+            Building: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+            ),
+        };
+
+        // Navigation mapping
+        const NAV_LINKS = {
+            dashboard: 'index.html',
+            attendance: 'attendance-records.html',
+            leave: 'leave-management.html',
+            overtime: 'overtime-management.html',
+                        management: 'management.html',
+            requests: 'requests-management.html',
+            company: 'company-settings.html',
+            reports: 'reports.html?mode=hr',
+            settings: 'settings.html?mode=hr',
+        };
+
+        // Sidebar Component
+        const Sidebar = ({ collapsed, setCollapsed }) => {
+            const menuItems = [
+                { id: 'dashboard', icon: <Icons.Home />, label: '대시보드' },
+                { id: 'attendance', icon: <Icons.Clock />, label: '출퇴근 기록' },
+                { id: 'leave', icon: <Icons.Island />, label: '휴가 관리' },
+                { id: 'overtime', icon: <Icons.Timer />, label: '연장/휴일근무' },
+                { id: 'requests', icon: <Icons.Clipboard />, label: '요청 관리' },
+                { id: 'management', icon: <Icons.Building />, label: '근무 규칙 관리' },
+                { id: 'company', icon: <Icons.Building />, label: '회사 규칙' },
+                { id: 'reports', icon: <Icons.Chart />, label: '리포트' },
+                { id: 'settings', icon: <Icons.Settings />, label: '설정' },
+            ];
+
+            const handleNav = (id) => {
+                if (id === 'attendance') return; // already here
+                const href = NAV_LINKS[id];
+                if (href) window.location.href = href;
+            };
+
+            return (
+                <aside className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 transition-all duration-300 z-40 ${collapsed ? 'w-20' : 'w-64'}`}>
+                    <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+                        {!collapsed && (
+                            <a href="index.html" className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
+                                    <span className="text-white font-bold text-sm">S</span>
+                                </div>
+                                <span className="font-bold text-slate-800">Suprema T&A</span>
+                            </a>
+                        )}
+                        <button onClick={() => setCollapsed(!collapsed)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                            <Icons.Menu />
+                        </button>
+                    </div>
+                    <nav className="p-3 space-y-1">
+                        {menuItems.map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => handleNav(item.id)}
+                                className={`nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                                    item.id === 'attendance'
+                                        ? 'active bg-primary-50 text-primary-600'
+                                        : 'text-slate-600 hover:text-slate-800'
+                                }`}
+                            >
+                                <span className={item.id === 'attendance' ? 'text-primary-600' : 'text-slate-400'}>
+                                    {item.icon}
+                                </span>
+                                {!collapsed && <span className="font-medium flex-1">{item.label}</span>}
+                            </button>
+                        ))}
+                    </nav>
+                </aside>
+            );
+        };
+
+        // Header Component
+        const Header = ({ collapsed, viewMode, setViewMode, searchQuery, setSearchQuery }) => {
+            const [unreadCount] = useState(2);
+
+            return (
+                <header className={`fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100 z-30 transition-all duration-300 ${collapsed ? 'left-20' : 'left-64'}`}>
+                    <div className="h-full px-6 flex items-center justify-end">
+                        <div className="flex items-center gap-4">
+                            <div className="flex bg-slate-100 rounded-xl p-1">
+                                <button
+                                    onClick={() => window.location.href = 'emp-attendance-records.html'}
+                                    className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-800"
+                                >
+                                    직원
+                                </button>
+                                <button
+                                    className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all bg-white text-primary-600 shadow-sm"
+                                >
+                                    HR 관리자
+                                </button>
+                            </div>
+                            <button className="relative p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                                <Icons.Bell />
+                                {unreadCount > 0 && (
+                                    <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                                        {unreadCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </header>
+            );
+        };
+
+        // ── Sample Data Generator ──
+        const generateAttendanceData = () => {
+            const employees = [
+                { empNo: 'E001', name: '김현준', dept: '개발팀', deptKey: 'dev', position: '선임' },
+                { empNo: 'E002', name: '이영지', dept: '마케팅팀', deptKey: 'marketing', position: '책임' },
+                { empNo: 'E003', name: '박민수', dept: '개발팀', deptKey: 'dev', position: '책임' },
+                { empNo: 'E004', name: '최수희', dept: '인사팀', deptKey: 'hr', position: '팀장' },
+                { empNo: 'E005', name: '정우성', dept: '영업팀', deptKey: 'sales', position: '사원' },
+                { empNo: 'E006', name: '한지민', dept: '개발팀', deptKey: 'dev', position: '사원' },
+                { empNo: 'E007', name: '오세훈', dept: '영업팀', deptKey: 'sales', position: '책임' },
+                { empNo: 'E008', name: '윤서연', dept: '마케팅팀', deptKey: 'marketing', position: '선임' },
+                { empNo: 'E009', name: '장동건', dept: '인사팀', deptKey: 'hr', position: '사원' },
+                { empNo: 'E010', name: '김태희', dept: '개발팀', deptKey: 'dev', position: '팀장' },
+                { empNo: 'E011', name: '이준호', dept: '영업팀', deptKey: 'sales', position: '선임' },
+                { empNo: 'E012', name: '송혜교', dept: '마케팅팀', deptKey: 'marketing', position: '팀장' },
+                { empNo: 'E013', name: '강동원', dept: '개발팀', deptKey: 'dev', position: '사원' },
+                { empNo: 'E014', name: '전지현', dept: '인사팀', deptKey: 'hr', position: '책임' },
+                { empNo: 'E015', name: '유재석', dept: '영업팀', deptKey: 'sales', position: '팀장' },
+            ];
+
+            const statuses = ['normal', 'normal', 'normal', 'normal', 'late', 'early', 'normal', 'normal'];
+            const approvalStatuses = ['대기', '대기', '대기', '승인', '승인', '승인', '승인', '반려'];
+            const locations = ['본사 1층', '본사 2층', '본사 B1', '강남지점', '판교오피스'];
+            const notes = ['', '', '', '프로젝트 마감', '고객 미팅', '외근', '재택근무', ''];
+
+            const records = [];
+            let id = 1;
+
+            // Generate records for Jan 20-31, 2026
+            for (let day = 20; day <= 31; day++) {
+                const dateStr = `2026-01-${String(day).padStart(2, '0')}`;
+                const dow = new Date(2026, 0, day).getDay();
+                if (dow === 0 || dow === 6) continue; // skip weekends
+
+                for (const emp of employees) {
+                    const status = statuses[Math.floor(Math.random() * statuses.length)];
+                    const schedule = '09:00-18:00';
+
+                    // Clock in
+                    let ciH, ciM;
+                    if (status === 'early') { ciH = 7; ciM = 30 + Math.floor(Math.random() * 25); }
+                    else if (status === 'late') { ciH = 9; ciM = 5 + Math.floor(Math.random() * 40); }
+                    else { ciH = 8; ciM = 40 + Math.floor(Math.random() * 20); }
+
+                    // Clock out
+                    let coH, coM;
+                    if (status === 'early') { coH = 18; coM = Math.floor(Math.random() * 15); }
+                    else if (status === 'late') { coH = 18; coM = Math.floor(Math.random() * 30); }
+                    else { coH = 17 + Math.floor(Math.random() * 3); coM = Math.floor(Math.random() * 59); }
+
+                    const totalMins = (coH * 60 + coM) - (ciH * 60 + ciM);
+                    const breakMins = 60;
+                    const actualMins = totalMins - breakMins;
+
+                    const ciVar = (ciH * 60 + ciM) - 540; // diff from 09:00
+                    const coVar = (coH * 60 + coM) - 1080; // diff from 18:00
+                    const schedVar = actualMins - 480; // diff from 8h
+
+                    const fmtVar = (mins) => {
+                        const sign = mins >= 0 ? '+' : '-';
+                        const abs = Math.abs(mins);
+                        if (abs >= 60) return `${sign}${Math.floor(abs/60)}h ${abs%60}m`;
+                        return `${sign}${abs}m`;
+                    };
+
+                    const fmtTime = (h, m) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+                    const fmtDur = (mins) => `${Math.floor(mins/60)}h ${String(mins%60).padStart(2,'0')}m`;
+
+                    const checkInLoc = locations[Math.floor(Math.random() * locations.length)];
+                    const checkOutLoc = locations[Math.floor(Math.random() * locations.length)];
+                    const note = notes[Math.floor(Math.random() * notes.length)];
+
+                    records.push({
+                        id: id++,
+                        empNo: emp.empNo,
+                        name: emp.name,
+                        dept: emp.dept,
+                        deptKey: emp.deptKey,
+                        position: emp.position,
+                        date: dateStr,
+                        clockIn: fmtTime(ciH, ciM),
+                        clockOut: fmtTime(coH, coM),
+                        schedule,
+                        checkInLocation: checkInLoc,
+                        checkOutLocation: checkOutLoc,
+                        workNote: note,
+                        breakTime: '1h 00m',
+                        totalHours: fmtDur(actualMins),
+                        scheduleVariance: fmtVar(schedVar),
+                        clockInVariance: fmtVar(ciVar),
+                        clockOutVariance: fmtVar(coVar),
+                        status,
+                        approvalStatus: approvalStatuses[Math.floor(Math.random() * approvalStatuses.length)],
+                    });
+                }
+            }
+            return records;
+        };
+
+        // Main App
+        const AppWrapper = () => {
+            const [collapsed, setCollapsed] = useState(false);
+            const [viewMode, setViewMode] = useState('hr');
+            const [searchQuery, setSearchQuery] = useState('');
+
+            return (
+                <div className="min-h-screen bg-slate-50">
+                    <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+                    <Header collapsed={collapsed} viewMode={viewMode} setViewMode={setViewMode}
+                        searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+                    <main className={`pt-16 transition-all duration-300 ${collapsed ? 'ml-20' : 'ml-64'}`}>
+                        <div className="p-6">
+                            <AttendanceRecordsConnected searchQuery={searchQuery} />
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        // Connected version that receives searchQuery from header
+        const AttendanceRecordsConnected = ({ searchQuery: externalSearch }) => {
+            const [toast, setToast] = useState(null);
+            const [dateFrom, setDateFrom] = useState('2026-01-27');
+            const [dateTo, setDateTo] = useState('2026-01-27');
+            const [quickFilter, setQuickFilter] = useState('today');
+            const [selectedDept, setSelectedDept] = useState('all');
+            const [selectedStatus, setSelectedStatus] = useState('all');
+            const [selectedAll, setSelectedAll] = useState(false);
+
+            // Advanced filters (Notion-style)
+            const [advancedFilters, setAdvancedFilters] = useState([
+                { id: 'status', field: '상태', values: [] }
+            ]);
+            const [filterDropdownOpen, setFilterDropdownOpen] = useState(null); // filter id
+            const [addFilterOpen, setAddFilterOpen] = useState(false);
+            const filterRef = useRef(null);
+
+            const FILTER_OPTIONS = {
+                '상태': { key: 'status', type: 'badge', options: [
+                    { value: 'normal', label: '정상', cls: 'status-badge status-normal' },
+                    { value: 'late', label: '지각', cls: 'status-badge status-late' },
+                    { value: 'early', label: '조기출근', cls: 'status-badge status-early' },
+                    { value: 'absent', label: '결근', cls: 'status-badge status-absent' },
+                ]},
+                '조직': { key: 'dept', type: 'text', options: [
+                    { value: '개발팀', label: '개발팀' },
+                    { value: '마케팅팀', label: '마케팅팀' },
+                    { value: '영업팀', label: '영업팀' },
+                    { value: '인사팀', label: '인사팀' },
+                ]},
+                '직무': { key: 'position', type: 'text', options: [
+                    { value: '사원', label: '사원' },
+                    { value: '선임', label: '선임' },
+                    { value: '책임', label: '책임' },
+                    { value: '팀장', label: '팀장' },
+                ]},
+                '출근장소': { key: 'checkInLocation', type: 'text', options: [
+                    { value: '본사 1층', label: '본사 1층' },
+                    { value: '본사 2층', label: '본사 2층' },
+                    { value: '본사 B1', label: '본사 B1' },
+                    { value: '강남지점', label: '강남지점' },
+                    { value: '판교오피스', label: '판교오피스' },
+                ]},
+                '퇴근장소': { key: 'checkOutLocation', type: 'text', options: [
+                    { value: '본사 1층', label: '본사 1층' },
+                    { value: '본사 2층', label: '본사 2층' },
+                    { value: '본사 B1', label: '본사 B1' },
+                    { value: '강남지점', label: '강남지점' },
+                    { value: '판교오피스', label: '판교오피스' },
+                ]},
+                '근무시간': { key: 'totalHours', type: 'text', options: [
+                    { value: '8h+', label: '8시간 이상' },
+                    { value: '8h-', label: '8시간 미만' },
+                ]},
+                '휴게시간': { key: 'breakTime', type: 'text', options: [
+                    { value: '1h 00m', label: '1h 00m' },
+                ]},
+                '승인상태': { key: 'approvalStatus', type: 'badge', options: [
+                    { value: '대기', label: '대기', cls: 'status-badge approval-pending' },
+                    { value: '승인', label: '승인', cls: 'status-badge approval-approved' },
+                    { value: '반려', label: '반려', cls: 'status-badge approval-rejected' },
+                ]},
+            };
+
+            const availableFilterFields = Object.keys(FILTER_OPTIONS).filter(
+                f => !advancedFilters.some(af => af.field === f)
+            );
+
+            const toggleFilterValue = (filterId, value) => {
+                setAdvancedFilters(prev => prev.map(f => {
+                    if (f.id !== filterId) return f;
+                    const vals = f.values.includes(value)
+                        ? f.values.filter(v => v !== value)
+                        : [...f.values, value];
+                    return { ...f, values: vals };
+                }));
+            };
+
+            const removeFilter = (filterId) => {
+                if (filterId === 'status') {
+                    // status filter always stays, just clear values
+                    setAdvancedFilters(prev => prev.map(f => f.id === 'status' ? { ...f, values: [] } : f));
+                } else {
+                    setAdvancedFilters(prev => prev.filter(f => f.id !== filterId));
+                }
+                setFilterDropdownOpen(null);
+            };
+
+            const addFilter = (field) => {
+                setAdvancedFilters(prev => [...prev, { id: field, field, values: [] }]);
+                setAddFilterOpen(false);
+                setFilterDropdownOpen(field);
+            };
+
+            // Close dropdowns on outside click
+            useEffect(() => {
+                const handler = (e) => {
+                    if (filterRef.current && !filterRef.current.contains(e.target)) {
+                        setFilterDropdownOpen(null);
+                        setAddFilterOpen(false);
+                    }
+                };
+                document.addEventListener('mousedown', handler);
+                return () => document.removeEventListener('mousedown', handler);
+            }, []);
+            const [selectedRows, setSelectedRows] = useState([]);
+            const [currentPage, setCurrentPage] = useState(1);
+            const pageSize = 15;
+
+            const APPROVAL_MAP = {
+                '대기': { cls: 'approval-pending', label: '대기' },
+                '승인': { cls: 'approval-approved', label: '승인' },
+                '반려': { cls: 'approval-rejected', label: '반려' },
+            };
+
+            const [allData, setAllData] = useState(() => generateAttendanceData());
+
+            const [showRejectModal, setShowRejectModal] = useState(false);
+            const [rejectReason, setRejectReason] = useState('');
+            const [currentRequestId, setCurrentRequestId] = useState(null);
+
+            // 출퇴근 기록 추가 모달 state
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [addFormData, setAddFormData] = useState({
+                date: '2026-02-02',
+                employee: '조혜연',
+                schedule: '무일정근무',
+                organization: '',
+                position: '',
+                clockInHour: '09',
+                clockInMin: '00',
+                clockOutHour: '18',
+                clockOutMin: '00',
+                isWorking: false,
+                note: ''
+            });
+
+            const employeeList = ['조혜연', '김현준', '이영지', '박민수', '최수희', '정우성', '한지민', '오세훈', '윤서연', '장동건', '김태희'];
+            const scheduleList = ['무일정근무', '09:00-18:00', '10:00-19:00', '08:00-17:00', '자율출퇴근'];
+            const orgList = ['선택안됨', '개발팀', '마케팅팀', '영업팀', '인사팀', '디자인팀'];
+            const positionList = ['선택안됨', '사원', '선임', '책임', '팀장'];
+
+            const getDayName = (dateStr) => {
+                const days = ['일', '월', '화', '수', '목', '금', '토'];
+                const date = new Date(dateStr);
+                return days[date.getDay()];
+            };
+
+            const formatDateDisplay = (dateStr) => {
+                const date = new Date(dateStr);
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                return `${month}월 ${day}일`;
+            };
+
+            const handleAddRecord = () => {
+                // 실제 구현에서는 데이터 추가 로직
+                setToast({ message: '출퇴근 기록이 추가되었습니다.', type: 'success' });
+                setShowAddModal(false);
+                setAddFormData({
+                    date: '2026-02-02',
+                    employee: '조혜연',
+                    schedule: '무일정근무',
+                    organization: '',
+                    position: '',
+                    clockInHour: '09',
+                    clockInMin: '00',
+                    clockOutHour: '18',
+                    clockOutMin: '00',
+                    isWorking: false,
+                    note: ''
+                });
+            };
+
+            const filteredData = useMemo(() => {
+                let data = allData;
+                if (dateFrom) data = data.filter(r => r.date >= dateFrom);
+                if (dateTo) data = data.filter(r => r.date <= dateTo);
+                if (selectedDept !== 'all') data = data.filter(r => r.deptKey === selectedDept);
+                if (selectedStatus !== 'all') data = data.filter(r => r.status === selectedStatus);
+                if (externalSearch && externalSearch.trim()) {
+                    const q = externalSearch.trim().toLowerCase();
+                    data = data.filter(r =>
+                        r.name.toLowerCase().includes(q) ||
+                        r.empNo.toLowerCase().includes(q) ||
+                        r.dept.toLowerCase().includes(q)
+                    );
+                }
+                // Apply advanced filters
+                for (const af of advancedFilters) {
+                    if (af.values.length === 0) continue;
+                    const opt = FILTER_OPTIONS[af.field];
+                    if (!opt) continue;
+                    if (af.field === '근무시간') {
+                        data = data.filter(r => {
+                            const mins = parseInt(r.totalHours);
+                            return af.values.some(v => v === '8h+' ? mins >= 8 : mins < 8);
+                        });
+                    } else {
+                        data = data.filter(r => af.values.includes(r[opt.key]));
+                    }
+                }
+                return data;
+            }, [allData, dateFrom, dateTo, selectedDept, selectedStatus, externalSearch, advancedFilters]);
+
+            useEffect(() => { setCurrentPage(1); }, [dateFrom, dateTo, selectedDept, selectedStatus, externalSearch]);
+
+            const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
+            const pagedData = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+            const getPageNumbers = () => {
+                const pages = [];
+                const start = Math.max(1, currentPage - 2);
+                const end = Math.min(totalPages, start + 4);
+                for (let i = start; i <= end; i++) pages.push(i);
+                return pages;
+            };
+
+            const summary = useMemo(() => ({
+                total: filteredData.length,
+                normal: filteredData.filter(r => r.status === 'normal').length,
+                late: filteredData.filter(r => r.status === 'late').length,
+                early: filteredData.filter(r => r.status === 'early').length,
+            }), [filteredData]);
+
+            const handleQuickFilter = (type) => {
+                setQuickFilter(type);
+                const today = new Date(2026, 0, 27);
+                if (type === 'today') {
+                    setDateFrom('2026-01-27');
+                    setDateTo('2026-01-27');
+                } else if (type === 'week') {
+                    const weekStart = new Date(today);
+                    weekStart.setDate(today.getDate() - today.getDay() + 1);
+                    const weekEnd = new Date(weekStart);
+                    weekEnd.setDate(weekStart.getDate() + 6);
+                    setDateFrom(weekStart.toISOString().split('T')[0]);
+                    setDateTo(weekEnd.toISOString().split('T')[0]);
+                } else if (type === 'month') {
+                    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    setDateFrom(monthStart.toISOString().split('T')[0]);
+                    setDateTo(monthEnd.toISOString().split('T')[0]);
+                }
+            };
+
+            const handleSelectAll = () => {
+                if (selectedAll) {
+                    setSelectedRows([]);
+                } else {
+                    setSelectedRows(pagedData.map(d => d.id));
+                }
+                setSelectedAll(!selectedAll);
+            };
+
+            useEffect(() => {
+                if (pagedData.length === 0) { setSelectedAll(false); return; }
+                setSelectedAll(pagedData.every(d => selectedRows.includes(d.id)));
+            }, [selectedRows, pagedData]);
+
+            const handleSelectRow = (id) => {
+                setSelectedRows(prev =>
+                    prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
+                );
+            };
+
+            const handleExportExcel = () => {
+                const exportData = selectedRows.length > 0
+                    ? filteredData.filter(r => selectedRows.includes(r.id))
+                    : filteredData;
+
+                const data = [
+                    ['사원번호','직원','조직','직무','날짜','출근시간','퇴근시간','근무일정','출근장소','퇴근장소','근무노트','휴게시간','총시간','근무일정 오차','출근시간 오차','퇴근시간 오차','상태'],
+                    ...exportData.map(r => [
+                        r.empNo, r.name, r.dept, r.position, r.date, r.clockIn, r.clockOut,
+                        r.schedule, r.checkInLocation, r.checkOutLocation, r.workNote,
+                        r.breakTime, r.totalHours, r.scheduleVariance, r.clockInVariance,
+                        r.clockOutVariance, r.status === 'normal' ? '정상' : r.status === 'late' ? '지각' : r.status === 'early' ? '조기출근' : r.status,
+                    ])
+                ];
+
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '출퇴근 기록');
+                XLSX.writeFile(wb, `출퇴근기록_${dateFrom}_${dateTo}.xlsx`);
+                setToast({ message: `${exportData.length}건이 엑셀로 다운로드되었습니다.`, type: 'success' });
+            };
+
+            const handleApprove = (id) => {
+                setAllData(prev => prev.map(r => r.id === id ? { ...r, approvalStatus: '승인' } : r));
+                setToast({ message: '승인되었습니다.', type: 'success' });
+            };
+
+            const handleBulkApprove = () => {
+                const pendingSelected = selectedRows.filter(id => allData.find(r => r.id === id)?.approvalStatus === '대기');
+                if (pendingSelected.length === 0) { setToast({ message: '승인할 대기 항목이 없습니다.', type: 'error' }); return; }
+                setAllData(prev => prev.map(r => pendingSelected.includes(r.id) ? { ...r, approvalStatus: '승인' } : r));
+                setToast({ message: `${pendingSelected.length}건이 승인되었습니다.`, type: 'success' });
+                setSelectedRows([]);
+            };
+
+            const handleRejectClick = (id) => {
+                setCurrentRequestId(id);
+                setRejectReason('');
+                setShowRejectModal(true);
+            };
+
+            const handleRejectConfirm = () => {
+                if (!rejectReason.trim()) return;
+                setAllData(prev => prev.map(r => r.id === currentRequestId ? { ...r, approvalStatus: '반려' } : r));
+                setShowRejectModal(false);
+                setRejectReason('');
+                setCurrentRequestId(null);
+                setToast({ message: '반려되었습니다.', type: 'success' });
+            };
+
+            const getStatusBadge = (status) => {
+                if (status === 'late') return <span className="status-badge status-late">지각</span>;
+                if (status === 'early') return <span className="status-badge status-early">조기출근</span>;
+                if (status === 'absent') return <span className="status-badge status-absent">결근</span>;
+                return <span className="status-badge status-normal">정상</span>;
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">출퇴근 기록</h1>
+                            <p className="text-slate-500">직원의 출퇴근 기록을 관리합니다</p>
+                        </div>
+                        <button
+                            onClick={() => setShowAddModal(true)}
+                            className="px-4 py-2 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors flex items-center gap-2"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            출퇴근 기록 추가
+                        </button>
+                    </div>
+
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-4 gap-4">
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">전체 기록</div>
+                            <div className="text-2xl font-bold text-slate-800">{summary.total}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">정상</div>
+                            <div className="text-2xl font-bold text-green-600">{summary.normal}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">지각</div>
+                            <div className="text-2xl font-bold text-amber-600">{summary.late}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                            <div className="text-sm text-slate-500 mb-1">조기출근</div>
+                            <div className="text-2xl font-bold text-blue-600">{summary.early}<span className="text-base font-normal text-slate-400">건</span></div>
+                        </div>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                        <div className="flex items-end gap-4 flex-wrap">
+                            <div className="flex-1 min-w-[300px]">
+                                <label className="block text-sm font-medium text-slate-700 mb-2">날짜 범위</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+                                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                    <span className="text-slate-400">-</span>
+                                    <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+                                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                </div>
+                            </div>
+
+                            <div className="flex bg-slate-100 rounded-lg p-1">
+                                <button onClick={() => handleQuickFilter('today')}
+                                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${quickFilter === 'today' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'}`}>오늘</button>
+                                <button onClick={() => handleQuickFilter('week')}
+                                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${quickFilter === 'week' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'}`}>이번 주</button>
+                                <button onClick={() => handleQuickFilter('month')}
+                                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${quickFilter === 'month' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600'}`}>이번 달</button>
+                            </div>
+
+                            <div className="flex-1"></div>
+
+                            {selectedRows.length > 0 && (
+                                <button onClick={handleBulkApprove}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-2">
+                                    <Icons.Check />
+                                    일괄 승인 ({selectedRows.length}건)
+                                </button>
+                            )}
+                            <button onClick={handleExportExcel}
+                                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center gap-2">
+                                <Icons.Download />
+                                엑셀 다운로드 {selectedRows.length > 0 && `(${selectedRows.length}건)`}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Notion-style Advanced Filter Bar */}
+                    <div className="flex items-center gap-2 flex-wrap" ref={filterRef}>
+                        {advancedFilters.map((af) => {
+                            const opt = FILTER_OPTIONS[af.field];
+                            if (!opt) return null;
+                            const isOpen = filterDropdownOpen === af.id;
+                            return (
+                                <div key={af.id} className="relative">
+                                    <button
+                                        onClick={() => setFilterDropdownOpen(isOpen ? null : af.id)}
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                                            af.values.length > 0
+                                                ? 'bg-primary-50 border-primary-200 text-primary-700'
+                                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                        </svg>
+                                        {af.field}
+                                        {af.values.length > 0 && (
+                                            <span className="text-slate-400 mx-0.5">:</span>
+                                        )}
+                                        {af.values.length > 0 && (() => {
+                                            const opt = FILTER_OPTIONS[af.field];
+                                            const labels = af.values.map(v => {
+                                                const found = opt.options.find(o => o.value === v);
+                                                return found ? found.label : v;
+                                            });
+                                            if (labels.length <= 2) {
+                                                return labels.map((label, i) => (
+                                                    <span key={i}>
+                                                        {opt.type === 'badge' ? (
+                                                            <span className={opt.options.find(o => o.label === label)?.cls || ''}>{label}</span>
+                                                        ) : (
+                                                            <span className="text-sm">{label}</span>
+                                                        )}
+                                                        {i < labels.length - 1 && <span className="text-slate-300 mx-0.5">,</span>}
+                                                    </span>
+                                                ));
+                                            } else {
+                                                const first = labels[0];
+                                                return (
+                                                    <span>
+                                                        {opt.type === 'badge' ? (
+                                                            <span className={opt.options.find(o => o.label === first)?.cls || ''}>{first}</span>
+                                                        ) : (
+                                                            <span className="text-sm">{first}</span>
+                                                        )}
+                                                        <span className="bg-slate-100 text-slate-600 text-xs rounded-full px-1.5 py-0.5 ml-1">+{labels.length - 1}</span>
+                                                    </span>
+                                                );
+                                            }
+                                        })()}
+                                        {af.id !== 'status' && (
+                                            <span onClick={(e) => { e.stopPropagation(); removeFilter(af.id); }}
+                                                className="ml-1 hover:text-red-500 cursor-pointer">&times;</span>
+                                        )}
+                                    </button>
+                                    {isOpen && (
+                                        <div className="absolute top-full left-0 mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-200 z-50 py-1">
+                                            <div className="px-3 py-2 border-b border-slate-100">
+                                                <div className="text-xs text-slate-400 font-medium uppercase">{af.field} 포함</div>
+                                            </div>
+                                            <div className="max-h-56 overflow-y-auto py-1">
+                                                {opt.options.map((o) => (
+                                                    <label key={o.value}
+                                                        className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer transition-colors">
+                                                        <input type="checkbox"
+                                                            checked={af.values.includes(o.value)}
+                                                            onChange={() => toggleFilterValue(af.id, o.value)}
+                                                            className="w-4 h-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500" />
+                                                        {opt.type === 'badge' ? (
+                                                            <span className={o.cls}>{o.label}</span>
+                                                        ) : (
+                                                            <span className="text-sm text-slate-700">{o.label}</span>
+                                                        )}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            {af.values.length > 0 && (
+                                                <div className="border-t border-slate-100 px-3 py-2">
+                                                    <button onClick={() => removeFilter(af.id)}
+                                                        className="text-xs text-slate-400 hover:text-red-500 transition-colors">필터 초기화</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                        {/* Add filter button */}
+                        <div className="relative">
+                            <button
+                                onClick={() => { setAddFilterOpen(!addFilterOpen); setFilterDropdownOpen(null); }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                필터 추가
+                            </button>
+                            {addFilterOpen && availableFilterFields.length > 0 && (
+                                <div className="absolute top-full left-0 mt-1 w-52 bg-white rounded-xl shadow-lg border border-slate-200 z-50 py-1">
+                                    <div className="px-3 py-2 border-b border-slate-100">
+                                        <input type="text" placeholder="필터 검색..." className="w-full text-sm px-2 py-1 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                    </div>
+                                    {availableFilterFields.map(field => (
+                                        <button key={field}
+                                            onClick={() => addFilter(field)}
+                                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+                                            {field}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Table */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div className="table-container">
+                            <table>
+                                <thead>
+                                    <tr className="border-b border-slate-200">
+                                        <th className="px-4 py-3 text-left">
+                                            <input type="checkbox" checked={selectedAll} onChange={handleSelectAll}
+                                                className="w-4 h-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500" />
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">사원번호</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">직원</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">날짜</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">근무시간</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">근무일정</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">조직</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">직무</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">출근장소</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">퇴근장소</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">근무노트</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">휴게시간</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">총시간</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">근무일정 오차</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">출근시간 오차</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">퇴근시간 오차</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">상태</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">승인상태</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pagedData.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={19} className="px-4 py-12 text-center text-slate-400">
+                                                검색 결과가 없습니다.
+                                            </td>
+                                        </tr>
+                                    ) : pagedData.map((record) => (
+                                        <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-3">
+                                                <input type="checkbox" checked={selectedRows.includes(record.id)}
+                                                    onChange={() => handleSelectRow(record.id)}
+                                                    className="w-4 h-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500" />
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.empNo}</td>
+                                            <td className="px-4 py-3 text-sm font-medium text-slate-800">{record.name}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.date}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.clockIn} - {record.clockOut}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.schedule}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.dept}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.position}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.checkInLocation}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.checkOutLocation}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.workNote || '-'}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.breakTime}</td>
+                                            <td className="px-4 py-3 text-sm font-medium text-slate-800">{record.totalHours}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.scheduleVariance}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.clockInVariance}</td>
+                                            <td className="px-4 py-3 text-sm text-slate-600">{record.clockOutVariance}</td>
+                                            <td className="px-4 py-3">{getStatusBadge(record.status)}</td>
+                                            <td className="px-4 py-3">
+                                                {APPROVAL_MAP[record.approvalStatus] && (
+                                                    <span className={`status-badge ${APPROVAL_MAP[record.approvalStatus].cls}`}>
+                                                        {APPROVAL_MAP[record.approvalStatus].label}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {record.approvalStatus === '대기' && (
+                                                    <div className="flex items-center gap-1">
+                                                        <button onClick={() => handleApprove(record.id)}
+                                                            className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors" title="승인">
+                                                            <Icons.Check />
+                                                        </button>
+                                                        <button onClick={() => handleRejectClick(record.id)}
+                                                            className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors" title="반려">
+                                                            <Icons.X />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination */}
+                        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+                            <div className="text-sm text-slate-600">
+                                총 {filteredData.length}건 중 {filteredData.length > 0 ? (currentPage-1)*pageSize+1 : 0}-{Math.min(currentPage*pageSize, filteredData.length)}건
+                                {selectedRows.length > 0 && <span className="ml-2 text-primary-600 font-medium">({selectedRows.length}건 선택됨)</span>}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                    이전
+                                </button>
+                                {getPageNumbers().map(p => (
+                                    <button key={p} onClick={() => setCurrentPage(p)}
+                                        className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                                            p === currentPage ? 'bg-primary-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                        }`}>{p}</button>
+                                ))}
+                                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                    다음
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Modal open={showRejectModal} onClose={() => setShowRejectModal(false)} title="반려 사유 입력">
+                        <textarea
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                            placeholder="반려 사유를 입력해주세요..."
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4"
+                            rows={4}
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setShowRejectModal(false)}
+                                className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">취소</button>
+                            <button onClick={handleRejectConfirm}
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors">반려</button>
+                        </div>
+                    </Modal>
+
+                    {/* 출퇴근기록 추가 모달 */}
+                    {showAddModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+                                {/* Header */}
+                                <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                                    <h3 className="text-xl font-bold text-slate-800">출퇴근기록 추가하기</h3>
+                                    <div className="flex items-center gap-2">
+                                        <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-400">
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </button>
+                                        <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-400">
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Body */}
+                                <div className="p-6 space-y-5">
+                                    {/* 날짜 */}
+                                    <div className="flex items-center gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700">날짜</label>
+                                        <div className="relative">
+                                            <input
+                                                type="date"
+                                                value={addFormData.date}
+                                                onChange={(e) => setAddFormData({...addFormData, date: e.target.value})}
+                                                className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                                            />
+                                            <div className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-lg bg-white cursor-pointer hover:border-slate-300">
+                                                <span className="text-sm text-slate-800">
+                                                    {addFormData.date.replace(/-/g, '.')} ({getDayName(addFormData.date)})
+                                                </span>
+                                                <Icons.Calendar />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 직원 */}
+                                    <div className="flex items-center gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700">직원</label>
+                                        <select
+                                            value={addFormData.employee}
+                                            onChange={(e) => setAddFormData({...addFormData, employee: e.target.value})}
+                                            className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        >
+                                            {employeeList.map(emp => (
+                                                <option key={emp} value={emp}>{emp}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* 근무일정 */}
+                                    <div className="flex items-center gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700">근무일정</label>
+                                        <select
+                                            value={addFormData.schedule}
+                                            onChange={(e) => setAddFormData({...addFormData, schedule: e.target.value})}
+                                            className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        >
+                                            {scheduleList.map(sch => (
+                                                <option key={sch} value={sch}>{sch}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* 조직 */}
+                                    <div className="flex items-center gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700">조직</label>
+                                        <select
+                                            value={addFormData.organization}
+                                            onChange={(e) => setAddFormData({...addFormData, organization: e.target.value})}
+                                            className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        >
+                                            {orgList.map(org => (
+                                                <option key={org} value={org === '선택안됨' ? '' : org}>{org}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* 직무 */}
+                                    <div className="flex items-center gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700">직무</label>
+                                        <select
+                                            value={addFormData.position}
+                                            onChange={(e) => setAddFormData({...addFormData, position: e.target.value})}
+                                            className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        >
+                                            {positionList.map(pos => (
+                                                <option key={pos} value={pos === '선택안됨' ? '' : pos}>{pos}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* 출근시간 */}
+                                    <div className="flex items-center gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700">출근시간</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={addFormData.clockInHour}
+                                                onChange={(e) => setAddFormData({...addFormData, clockInHour: e.target.value.slice(0,2)})}
+                                                className="w-16 px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-center text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                                maxLength={2}
+                                            />
+                                            <span className="text-slate-400 text-lg">:</span>
+                                            <input
+                                                type="text"
+                                                value={addFormData.clockInMin}
+                                                onChange={(e) => setAddFormData({...addFormData, clockInMin: e.target.value.slice(0,2)})}
+                                                className="w-16 px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-center text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                                maxLength={2}
+                                            />
+                                            <span className="text-sm text-slate-500 ml-4">
+                                                {formatDateDisplay(addFormData.date)} {addFormData.clockInHour}:{addFormData.clockInMin}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* 퇴근시간 */}
+                                    <div className="flex items-center gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700">퇴근시간</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={addFormData.clockOutHour}
+                                                onChange={(e) => setAddFormData({...addFormData, clockOutHour: e.target.value.slice(0,2)})}
+                                                className="w-16 px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-center text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                                maxLength={2}
+                                                disabled={addFormData.isWorking}
+                                            />
+                                            <span className="text-slate-400 text-lg">:</span>
+                                            <input
+                                                type="text"
+                                                value={addFormData.clockOutMin}
+                                                onChange={(e) => setAddFormData({...addFormData, clockOutMin: e.target.value.slice(0,2)})}
+                                                className="w-16 px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-center text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                                maxLength={2}
+                                                disabled={addFormData.isWorking}
+                                            />
+                                            <span className="text-sm text-slate-500 ml-4">
+                                                {formatDateDisplay(addFormData.date)} {addFormData.clockOutHour}:{addFormData.clockOutMin}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* 현재 근무중 */}
+                                    <div className="flex items-center gap-8 pl-28">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={addFormData.isWorking}
+                                                onChange={(e) => setAddFormData({...addFormData, isWorking: e.target.checked})}
+                                                className="w-4 h-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500"
+                                            />
+                                            <span className="text-sm text-slate-700">현재 근무중</span>
+                                        </label>
+                                    </div>
+
+                                    {/* 근무노트 */}
+                                    <div className="flex items-start gap-8">
+                                        <label className="w-20 text-sm font-medium text-slate-700 pt-2.5">근무노트</label>
+                                        <textarea
+                                            value={addFormData.note}
+                                            onChange={(e) => setAddFormData({...addFormData, note: e.target.value})}
+                                            className="flex-1 px-4 py-3 border border-slate-200 rounded-lg text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                                            rows={4}
+                                            placeholder=""
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex justify-end gap-3 p-6 border-t border-slate-100">
+                                    <button
+                                        onClick={() => setShowAddModal(false)}
+                                        className="px-6 py-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                                    >
+                                        닫기
+                                    </button>
+                                    <button
+                                        onClick={handleAddRecord}
+                                        className="px-6 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        추가하기
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AppWrapper />);
+    </script>
+</body>
+</html>

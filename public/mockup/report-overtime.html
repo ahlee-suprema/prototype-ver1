@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연장근무 분석</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse { animation: pulse 2s infinite; }
+    </style>
+</head>
+<body class="bg-slate-50 p-6">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // 52시간 모니터링 카드
+        const HourMonitorCard = ({ data }) => {
+            const getStatusColor = (hours) => {
+                if (hours >= 48) return 'border-red-500 bg-red-50';
+                if (hours >= 44) return 'border-amber-500 bg-amber-50';
+                return 'border-green-500 bg-green-50';
+            };
+
+            const getProgressColor = (hours) => {
+                if (hours >= 48) return 'bg-red-500';
+                if (hours >= 44) return 'bg-amber-500';
+                return 'bg-blue-500';
+            };
+
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-slate-800">52시간 모니터링</h3>
+                        <div className="flex items-center gap-2 text-sm">
+                            <span className="flex items-center gap-1 text-red-600"><span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />위험 {data.filter(d => d.hours >= 48).length}명</span>
+                            <span className="flex items-center gap-1 text-amber-600"><span className="w-2 h-2 bg-amber-500 rounded-full" />주의 {data.filter(d => d.hours >= 44 && d.hours < 48).length}명</span>
+                        </div>
+                    </div>
+                    <div className="space-y-3 max-h-80 overflow-y-auto">
+                        {data.sort((a, b) => b.hours - a.hours).map((person, idx) => (
+                            <div key={idx} className={`p-4 rounded-xl border-l-4 ${getStatusColor(person.hours)}`}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center font-semibold text-slate-600">{person.name[0]}</div>
+                                        <div>
+                                            <div className="font-medium text-slate-800">{person.name}</div>
+                                            <div className="text-xs text-slate-500">{person.dept} · {person.position}</div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className={`text-lg font-bold ${person.hours >= 48 ? 'text-red-600' : person.hours >= 44 ? 'text-amber-600' : 'text-slate-800'}`}>{person.hours}h</div>
+                                        <div className="text-xs text-slate-500">/ 52h</div>
+                                    </div>
+                                </div>
+                                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${getProgressColor(person.hours)}`} style={{ width: `${(person.hours / 52) * 100}%` }} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // 부서별 연장근무 현황
+        const DeptOvertimeChart = ({ data }) => {
+            const max = Math.max(...data.map(d => d.total));
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">부서별 연장근무</h3>
+                    <div className="space-y-4">
+                        {data.map((dept, idx) => (
+                            <div key={idx}>
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-slate-600">{dept.name}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-slate-400">평균 {dept.avg}h/인</span>
+                                        <span className="font-semibold text-slate-800">{dept.total}h</span>
+                                    </div>
+                                </div>
+                                <div className="h-4 bg-slate-100 rounded-full overflow-hidden flex">
+                                    <div className="h-full bg-blue-500" style={{ width: `${(dept.weekday / max) * 100}%` }} title="평일" />
+                                    <div className="h-full bg-amber-500" style={{ width: `${(dept.weekend / max) * 100}%` }} title="휴일" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-slate-100 text-sm">
+                        <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-500 rounded" /><span className="text-slate-600">평일 연장</span></div>
+                        <div className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-500 rounded" /><span className="text-slate-600">휴일 근무</span></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 월간 추이
+        const MonthlyTrend = ({ data }) => {
+            const max = Math.max(...data.map(d => d.value));
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">월간 연장근무 추이</h3>
+                    <div className="flex items-end gap-2 h-40">
+                        {data.map((month, idx) => (
+                            <div key={idx} className="flex-1 flex flex-col items-center">
+                                <div className="w-full bg-blue-500 rounded-t transition-all hover:bg-blue-600" style={{ height: `${(month.value / max) * 100}%` }} />
+                                <span className="text-xs text-slate-500 mt-2">{month.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-slate-100 text-center">
+                        <div><div className="text-lg font-bold text-slate-800">{Math.round(data.reduce((a, b) => a + b.value, 0) / data.length)}h</div><div className="text-xs text-slate-500">월평균</div></div>
+                        <div><div className="text-lg font-bold text-red-600">{max}h</div><div className="text-xs text-slate-500">최다</div></div>
+                        <div><div className="text-lg font-bold text-green-600">{Math.min(...data.map(d => d.value))}h</div><div className="text-xs text-slate-500">최소</div></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 연장근무 사유 분석
+        const ReasonAnalysis = ({ data }) => (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">연장근무 사유 분석</h3>
+                <div className="space-y-3">
+                    {data.map((reason, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${reason.color}`}>
+                                    <span className="text-lg">{reason.icon}</span>
+                                </div>
+                                <span className="font-medium text-slate-700">{reason.label}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${reason.percent}%` }} />
+                                </div>
+                                <span className="text-sm font-semibold text-slate-800 w-12 text-right">{reason.percent}%</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        const ReportOvertime = () => {
+            const [realtime, setRealtime] = useState(true);
+
+            const monitoringData = [
+                { name: '최준혁', dept: '개발1팀', position: '책임', hours: 49.5 },
+                { name: '이영희', dept: '개발1팀', position: '책임', hours: 47.0 },
+                { name: '김철수', dept: '개발1팀', position: '선임', hours: 45.5 },
+                { name: '송지은', dept: '개발2팀', position: '선임', hours: 44.0 },
+                { name: '박민수', dept: '개발2팀', position: '사원', hours: 42.0 },
+                { name: '정수진', dept: '개발1팀', position: '선임', hours: 38.5 },
+            ];
+
+            const deptData = [
+                { name: '개발1팀', total: 186, weekday: 142, weekend: 44, avg: 7.4 },
+                { name: '개발2팀', total: 158, weekday: 128, weekend: 30, avg: 7.2 },
+                { name: '디자인팀', total: 82, weekday: 72, weekend: 10, avg: 5.5 },
+                { name: '마케팅팀', total: 65, weekday: 58, weekend: 7, avg: 3.3 },
+                { name: '영업팀', total: 98, weekday: 85, weekend: 13, avg: 3.5 },
+            ];
+
+            const monthlyData = [
+                { label: '8월', value: 420 },
+                { label: '9월', value: 385 },
+                { label: '10월', value: 450 },
+                { label: '11월', value: 410 },
+                { label: '12월', value: 520 },
+                { label: '1월', value: 480 },
+            ];
+
+            const reasonData = [
+                { label: '프로젝트 마감', icon: '📋', color: 'bg-blue-100', percent: 35 },
+                { label: '긴급 버그 수정', icon: '🐛', color: 'bg-red-100', percent: 25 },
+                { label: '고객 요청 대응', icon: '💬', color: 'bg-green-100', percent: 20 },
+                { label: '시스템 배포', icon: '🚀', color: 'bg-purple-100', percent: 12 },
+                { label: '기타', icon: '📝', color: 'bg-slate-100', percent: 8 },
+            ];
+
+            const handleExport = () => {
+                const ws = XLSX.utils.aoa_to_sheet([
+                    ['이름', '부서', '직급', '주간 근무시간'],
+                    ...monitoringData.map(d => [d.name, d.dept, d.position, d.hours + 'h'])
+                ]);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '연장근무');
+                XLSX.writeFile(wb, `연장근무분석_${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">연장근무 분석</h1>
+                            <p className="text-slate-500 text-sm">52시간 모니터링 및 연장근무 현황</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />실시간 모니터링
+                            </div>
+                            <button onClick={handleExport} className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700">엑셀 다운로드</button>
+                        </div>
+                    </div>
+
+                    {/* Warning Alert */}
+                    <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-4">
+                        <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center text-2xl">⚠️</div>
+                        <div className="flex-1">
+                            <div className="font-semibold text-red-800">52시간 초과 위험 경고</div>
+                            <div className="text-sm text-red-600">1명이 주 52시간을 초과했습니다. 즉시 조치가 필요합니다.</div>
+                        </div>
+                        <button className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700">상세 보기</button>
+                    </div>
+
+                    {/* Main Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <HourMonitorCard data={monitoringData} />
+                        <DeptOvertimeChart data={deptData} />
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <MonthlyTrend data={monthlyData} />
+                        <ReasonAnalysis data={reasonData} />
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ReportOvertime />);
+    </script>
+</body>
+</html>

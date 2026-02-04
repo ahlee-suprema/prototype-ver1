@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연장/휴일 근무 신청 - Suprema T&A</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        .toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext } = React;
+
+        // Toast Context
+        const ToastContext = createContext();
+        const useToast = () => useContext(ToastContext);
+
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+
+            const addToast = (message, type = 'success') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setToasts(prev => prev.filter(t => t.id !== id));
+                }, 3000);
+            };
+
+            return (
+                <ToastContext.Provider value={{ addToast }}>
+                    {children}
+                    <div className="fixed bottom-4 right-4 z-50 space-y-2">
+                        {toasts.map(toast => (
+                            <div
+                                key={toast.id}
+                                className={`toast px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 ${
+                                    toast.type === 'success' ? 'bg-green-500 text-white' :
+                                    toast.type === 'error' ? 'bg-red-500 text-white' :
+                                    toast.type === 'warning' ? 'bg-amber-500 text-white' :
+                                    'bg-slate-800 text-white'
+                                }`}
+                            >
+                                {toast.type === 'success' && (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                                {toast.message}
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+
+        const OvertimeRequestForm = () => {
+            const toast = useToast();
+            // Read URL parameter to set initial work type
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialWorkType = urlParams.get('type') === 'holiday' ? 'holiday' : 'overtime';
+            const [workType, setWorkType] = useState(initialWorkType); // 'overtime' or 'holiday'
+            const [requestType, setRequestType] = useState('advance'); // 'advance' or 'after'
+            const [selectedDate, setSelectedDate] = useState('2026-01-27');
+            const [startTime, setStartTime] = useState('18:00');
+            const [endTime, setEndTime] = useState('20:00');
+            const [reason, setReason] = useState('');
+            const [calculatedHours, setCalculatedHours] = useState(2);
+            const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+            // Weekly overtime data
+            const [weeklyData, setWeeklyData] = useState({
+                weekStart: '2026-01-26',
+                weekEnd: '2026-02-01',
+                used: 2.5,
+                max: 12,
+                dailyMax: 6,
+                breakdown: [
+                    { day: '월', date: '01/27', hours: 1.5, approved: true },
+                    { day: '화', date: '01/28', hours: 1, approved: true },
+                    { day: '수', date: '01/29', hours: 0, approved: false },
+                    { day: '목', date: '01/30', hours: 0, approved: false },
+                    { day: '금', date: '01/31', hours: 0, approved: false },
+                ]
+            });
+
+            // Calculate hours when times change
+            useEffect(() => {
+                const start = new Date(`2026-01-27T${startTime}`);
+                const end = new Date(`2026-01-27T${endTime}`);
+                let diff = (end - start) / (1000 * 60 * 60);
+
+                // Handle overnight shifts
+                if (diff < 0) {
+                    diff += 24;
+                }
+
+                // Subtract 30min meal time if over 2 hours
+                const mealDeduction = diff >= 2 ? 0.5 : 0;
+                setCalculatedHours(Math.max(0, diff - mealDeduction));
+            }, [startTime, endTime]);
+
+            const remaining = weeklyData.max - weeklyData.used;
+
+            // Different validation for overtime vs holiday work
+            const isOverWeeklyLimit = workType === 'overtime' && calculatedHours > remaining;
+            const isDailyOverLimit = workType === 'overtime'
+                ? calculatedHours > weeklyData.dailyMax
+                : calculatedHours > 12; // Holiday work max 12 hours
+            const isValid = !isOverWeeklyLimit && !isDailyOverLimit && calculatedHours > 0;
+
+            // Quick time selection
+            const quickTimes = [
+                { label: '1시간', start: '18:00', end: '19:30' },
+                { label: '2시간', start: '18:00', end: '20:30' },
+                { label: '3시간', start: '18:00', end: '21:30' },
+                { label: '4시간', start: '18:00', end: '22:30' },
+            ];
+
+            const handleQuickTime = (qt) => {
+                setStartTime(qt.start);
+                setEndTime(qt.end);
+            };
+
+            const handleSubmit = () => {
+                if (!isValid) {
+                    if (isOverWeeklyLimit) {
+                        toast.addToast('주간 연장근무 한도를 초과합니다.', 'error');
+                    } else if (isDailyOverLimit) {
+                        const maxHours = workType === 'overtime' ? '6' : '12';
+                        toast.addToast(`1일 최대 ${maxHours}시간을 초과합니다.`, 'error');
+                    }
+                    return;
+                }
+                if (!reason.trim()) {
+                    toast.addToast('신청 사유를 입력해주세요.', 'warning');
+                    return;
+                }
+                setShowConfirmModal(true);
+            };
+
+            const handleConfirmSubmit = () => {
+                setShowConfirmModal(false);
+                // Update weekly data only for overtime
+                if (workType === 'overtime') {
+                    const newUsed = weeklyData.used + calculatedHours;
+                    setWeeklyData(prev => ({
+                        ...prev,
+                        used: newUsed,
+                        breakdown: prev.breakdown.map((d, i) =>
+                            i === 0 ? { ...d, hours: d.hours + calculatedHours } : d
+                        )
+                    }));
+                }
+                toast.addToast(
+                    `${workType === 'overtime' ? '연장근무' : '휴일근무'} 신청이 완료되었습니다.`,
+                    'success'
+                );
+                setReason('');
+            };
+
+            const handleSaveDraft = () => {
+                toast.addToast('임시 저장되었습니다.', 'success');
+            };
+
+            return (
+                <div className="max-w-3xl mx-auto p-6">
+                    {/* Header */}
+                    <div className="flex items-center gap-4 mb-8">
+                        <button
+                            onClick={() => window.history.back()}
+                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                            <svg className="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">연장/휴일 근무 신청</h1>
+                            <p className="text-slate-500">연장근무 또는 휴일근무를 신청합니다</p>
+                        </div>
+                    </div>
+
+                    {/* Weekly Status Card */}
+                    <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 mb-6 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-24 translate-x-24" />
+
+                        <div className="relative z-10">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <div className="text-amber-100 text-sm mb-1">이번 주 연장근무 현황</div>
+                                    <div className="text-3xl font-bold">{weeklyData.used}h / {weeklyData.max}h</div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-amber-100 text-sm mb-1">잔여 가능시간</div>
+                                    <div className="text-3xl font-bold">{remaining.toFixed(1)}h</div>
+                                </div>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="bg-white/20 rounded-full h-3 overflow-hidden mb-4">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                        weeklyData.used / weeklyData.max >= 0.9 ? 'bg-red-300' : 'bg-white'
+                                    }`}
+                                    style={{ width: `${(weeklyData.used / weeklyData.max) * 100}%` }}
+                                />
+                            </div>
+
+                            {/* Daily Breakdown */}
+                            <div className="grid grid-cols-5 gap-2">
+                                {weeklyData.breakdown.map((day, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`rounded-lg p-2 text-center transition-all ${
+                                            day.hours > 0 ? 'bg-white/20' : 'bg-white/10'
+                                        }`}
+                                    >
+                                        <div className="text-xs text-amber-100">{day.day} ({day.date})</div>
+                                        <div className="font-semibold">{day.hours}h</div>
+                                        {day.approved && day.hours > 0 && (
+                                            <div className="text-xs text-green-200">승인됨</div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Request Type Toggle */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+                        <h3 className="text-lg font-semibold text-slate-800 mb-4">신청 구분</h3>
+
+                        {/* Work Type Toggle: 연장근무 / 휴일근무 */}
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-slate-700 mb-3">근무 유형</label>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setWorkType('overtime')}
+                                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                                        workType === 'overtime'
+                                            ? 'border-blue-500 bg-blue-50'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span className="font-semibold text-slate-800">연장근무</span>
+                                    </div>
+                                    <div className="text-sm text-slate-500 mt-1">소정근로시간 이후 연장근무</div>
+                                    <div className="text-xs text-blue-600 mt-2 font-medium">1일 최대 6시간 / 주간 12시간</div>
+                                </button>
+                                <button
+                                    onClick={() => setWorkType('holiday')}
+                                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                                        workType === 'holiday'
+                                            ? 'border-purple-500 bg-purple-50'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <span className="font-semibold text-slate-800">휴일근무</span>
+                                    </div>
+                                    <div className="text-sm text-slate-500 mt-1">주말 또는 공휴일 근무</div>
+                                    <div className="text-xs text-purple-600 mt-2 font-medium">1일 최대 12시간</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Advance/After Toggle */}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-3">신청 시점</label>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setRequestType('advance')}
+                                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                                        requestType === 'advance'
+                                            ? 'border-blue-500 bg-blue-50'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span className="font-semibold text-slate-800">사전 신청</span>
+                                    </div>
+                                    <div className="text-sm text-slate-500 mt-1">
+                                        {workType === 'overtime' ? '연장근무 예정 시 사전 신청' : '휴일근무 예정 시 사전 신청'}
+                                    </div>
+                                    <div className="text-xs text-blue-600 mt-2 font-medium">
+                                        {workType === 'overtime' ? '부서장 전결' : '회장님 전결'}
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => setRequestType('after')}
+                                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                                        requestType === 'after'
+                                            ? 'border-blue-500 bg-blue-50'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        <span className="font-semibold text-slate-800">사후 신청</span>
+                                    </div>
+                                    <div className="text-sm text-slate-500 mt-1">
+                                        {workType === 'overtime' ? '긴급 연장근무 후 사후 신청' : '긴급 휴일근무 후 사후 신청'}
+                                    </div>
+                                    <div className="text-xs text-amber-600 mt-2 font-medium">소속 총괄 전결</div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Date & Time Selection */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+                        <h3 className="text-lg font-semibold text-slate-800 mb-4">근무 일시</h3>
+
+                        <div className="grid grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">근무일</label>
+                                <input
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    min="2026-01-27"
+                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">시작 시간</label>
+                                <input
+                                    type="time"
+                                    value={startTime}
+                                    onChange={(e) => setStartTime(e.target.value)}
+                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">종료 시간</label>
+                                <input
+                                    type="time"
+                                    value={endTime}
+                                    onChange={(e) => setEndTime(e.target.value)}
+                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Quick Time Selection */}
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-slate-700 mb-2">빠른 선택</label>
+                            <div className="flex gap-2">
+                                {quickTimes.map((qt) => (
+                                    <button
+                                        key={qt.label}
+                                        onClick={() => handleQuickTime(qt)}
+                                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium text-slate-700 transition-colors"
+                                    >
+                                        {qt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Time Calculation */}
+                        <div className={`p-4 rounded-xl transition-colors ${
+                            isOverWeeklyLimit || isDailyOverLimit ? 'bg-red-50 border border-red-200' : 'bg-slate-50'
+                        }`}>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-sm text-slate-500">
+                                        {workType === 'overtime' ? '연장근무 시간 (식사 30분 제외)' : '휴일근무 시간 (식사 30분 제외)'}
+                                    </div>
+                                    <div className={`text-2xl font-bold ${
+                                        isOverWeeklyLimit || isDailyOverLimit ? 'text-red-600' : 'text-slate-800'
+                                    }`}>
+                                        {calculatedHours.toFixed(1)}시간
+                                    </div>
+                                </div>
+                                {(isOverWeeklyLimit || isDailyOverLimit) && (
+                                    <div className="text-right">
+                                        <div className="flex items-center gap-2 text-red-600">
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            <span className="font-medium">
+                                                {isDailyOverLimit
+                                                    ? `1일 최대 ${workType === 'overtime' ? '6' : '12'}시간 초과`
+                                                    : '주간 12시간 초과'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Info Box */}
+                        <div className={`mt-4 p-3 rounded-lg border ${
+                            workType === 'overtime' ? 'bg-blue-50 border-blue-100' : 'bg-purple-50 border-purple-100'
+                        }`}>
+                            <div className={`flex gap-2 text-sm ${workType === 'overtime' ? 'text-blue-700' : 'text-purple-700'}`}>
+                                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <div>
+                                    <div className="font-medium">
+                                        {workType === 'overtime' ? '연장근무 기준' : '휴일근무 기준'}
+                                    </div>
+                                    <ul className={`mt-1 space-y-1 ${workType === 'overtime' ? 'text-blue-600' : 'text-purple-600'}`}>
+                                        {workType === 'overtime' ? (
+                                            <>
+                                                <li>• 소정근로시간(08:00~17:00, 휴게 1시간 포함) 이후부터 적용</li>
+                                                <li>• 정시퇴근 후 30분은 식사시간으로 제외</li>
+                                                <li>• 1일 최대 6시간, 주간 최대 12시간</li>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <li>• 주말 또는 공휴일에 근무하는 경우 신청</li>
+                                                <li>• 근무일 직전 영업일 정오(12시)까지 상신 필수</li>
+                                                <li>• 1일 최대 12시간까지 신청 가능</li>
+                                                <li>• 결재선: 팀장 → 부서장 → 총괄 → 회장님 전결</li>
+                                            </>
+                                        )}
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Reason */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+                        <h3 className="text-lg font-semibold text-slate-800 mb-4">신청 사유 <span className="text-red-500">*</span></h3>
+                        <textarea
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            placeholder="연장근무 사유를 입력하세요... (필수)"
+                            className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-32 ${
+                                !reason.trim() ? 'border-slate-200' : 'border-green-300 bg-green-50'
+                            }`}
+                        />
+                        <div className="mt-2 flex justify-between text-sm">
+                            <span className="text-slate-500">예: 프로젝트 마감, 긴급 버그 수정, 고객 요청 대응 등</span>
+                            <span className={reason.length > 0 ? 'text-green-600' : 'text-slate-400'}>{reason.length}자</span>
+                        </div>
+                    </div>
+
+                    {/* Approval Line */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+                        <h3 className="text-lg font-semibold text-slate-800 mb-4">결재선</h3>
+
+                        {workType === 'overtime' ? (
+                            // Overtime approval line
+                            <div className="flex items-center justify-center gap-4">
+                                <div className="text-center">
+                                    <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <span className="text-lg font-bold text-blue-600">김</span>
+                                    </div>
+                                    <div className="text-sm font-medium text-slate-800">김호준</div>
+                                    <div className="text-xs text-slate-500">신청자</div>
+                                </div>
+
+                                <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+
+                                <div className="text-center">
+                                    <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <span className="text-lg font-bold text-green-600">
+                                            {requestType === 'advance' ? '박' : '이'}
+                                        </span>
+                                    </div>
+                                    <div className="text-sm font-medium text-slate-800">
+                                        {requestType === 'advance' ? '박부서장' : '이총괄'}
+                                    </div>
+                                    <div className="text-xs text-slate-500">
+                                        {requestType === 'advance' ? '부서장 전결' : '총괄 전결'}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            // Holiday work approval line (팀장→부서장→총괄→회장님)
+                            <div className="flex items-center justify-center gap-2 overflow-x-auto">
+                                <div className="text-center flex-shrink-0">
+                                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <span className="text-sm font-bold text-blue-600">김</span>
+                                    </div>
+                                    <div className="text-xs font-medium text-slate-800">김호준</div>
+                                    <div className="text-xs text-slate-500">신청자</div>
+                                </div>
+
+                                <svg className="w-6 h-6 text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+
+                                <div className="text-center flex-shrink-0">
+                                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <span className="text-sm font-bold text-green-600">최</span>
+                                    </div>
+                                    <div className="text-xs font-medium text-slate-800">최팀장</div>
+                                    <div className="text-xs text-slate-500">팀장</div>
+                                </div>
+
+                                <svg className="w-6 h-6 text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+
+                                <div className="text-center flex-shrink-0">
+                                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <span className="text-sm font-bold text-green-600">박</span>
+                                    </div>
+                                    <div className="text-xs font-medium text-slate-800">박부서장</div>
+                                    <div className="text-xs text-slate-500">부서장</div>
+                                </div>
+
+                                <svg className="w-6 h-6 text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+
+                                <div className="text-center flex-shrink-0">
+                                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <span className="text-sm font-bold text-green-600">이</span>
+                                    </div>
+                                    <div className="text-xs font-medium text-slate-800">이총괄</div>
+                                    <div className="text-xs text-slate-500">총괄</div>
+                                </div>
+
+                                <svg className="w-6 h-6 text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+
+                                <div className="text-center flex-shrink-0">
+                                    <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                        <span className="text-sm font-bold text-purple-600">강</span>
+                                    </div>
+                                    <div className="text-xs font-medium text-slate-800">강회장</div>
+                                    <div className="text-xs text-slate-500">회장님 전결</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Summary & Submit */}
+                    <div className={`rounded-2xl p-6 border mb-6 ${
+                        workType === 'overtime' ? 'bg-amber-50 border-amber-200' : 'bg-purple-50 border-purple-200'
+                    }`}>
+                        <h4 className={`font-semibold mb-4 ${
+                            workType === 'overtime' ? 'text-amber-800' : 'text-purple-800'
+                        }`}>신청 내역 확인</h4>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <span className={workType === 'overtime' ? 'text-amber-700' : 'text-purple-700'}>근무 유형</span>
+                                <span className={`block font-medium ${
+                                    workType === 'overtime' ? 'text-amber-900' : 'text-purple-900'
+                                }`}>
+                                    {workType === 'overtime' ? '연장근무' : '휴일근무'}
+                                </span>
+                            </div>
+                            <div>
+                                <span className={workType === 'overtime' ? 'text-amber-700' : 'text-purple-700'}>신청 구분</span>
+                                <span className={`block font-medium ${
+                                    workType === 'overtime' ? 'text-amber-900' : 'text-purple-900'
+                                }`}>
+                                    {requestType === 'advance' ? '사전 신청' : '사후 신청'}
+                                </span>
+                            </div>
+                            <div>
+                                <span className={workType === 'overtime' ? 'text-amber-700' : 'text-purple-700'}>근무일</span>
+                                <span className={`block font-medium ${
+                                    workType === 'overtime' ? 'text-amber-900' : 'text-purple-900'
+                                }`}>
+                                    {new Date(selectedDate).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+                                </span>
+                            </div>
+                            <div>
+                                <span className={workType === 'overtime' ? 'text-amber-700' : 'text-purple-700'}>근무시간</span>
+                                <span className={`block font-medium ${
+                                    workType === 'overtime' ? 'text-amber-900' : 'text-purple-900'
+                                }`}>{startTime} ~ {endTime}</span>
+                            </div>
+                            <div>
+                                <span className={workType === 'overtime' ? 'text-amber-700' : 'text-purple-700'}>
+                                    {workType === 'overtime' ? '연장근무 시간' : '휴일근무 시간'}
+                                </span>
+                                <span className={`block font-medium ${
+                                    workType === 'overtime' ? 'text-amber-900' : 'text-purple-900'
+                                }`}>{calculatedHours.toFixed(1)}시간</span>
+                            </div>
+                        </div>
+                        {workType === 'overtime' && (
+                            <div className="mt-4 pt-4 border-t border-amber-200">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-amber-700">신청 후 주간 연장근무</span>
+                                    <span className={`text-lg font-bold ${
+                                        (weeklyData.used + calculatedHours) > weeklyData.max ? 'text-red-600' : 'text-amber-900'
+                                    }`}>
+                                        {(weeklyData.used + calculatedHours).toFixed(1)}h / {weeklyData.max}h
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-4">
+                        <button
+                            onClick={handleSaveDraft}
+                            className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                        >
+                            임시저장
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={!isValid}
+                            className={`flex-1 py-4 rounded-xl font-medium transition-colors ${
+                                !isValid
+                                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                        >
+                            신청하기
+                        </button>
+                    </div>
+
+                    {/* Confirm Modal */}
+                    {showConfirmModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center">
+                                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                                    workType === 'overtime' ? 'bg-amber-100' : 'bg-purple-100'
+                                }`}>
+                                    <svg className={`w-8 h-8 ${
+                                        workType === 'overtime' ? 'text-amber-600' : 'text-purple-600'
+                                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        {workType === 'overtime' ? (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        ) : (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        )}
+                                    </svg>
+                                </div>
+                                <h2 className="text-xl font-bold text-slate-800 mb-2">
+                                    {workType === 'overtime' ? '연장근무' : '휴일근무'} 신청 확인
+                                </h2>
+                                <p className="text-slate-600 mb-6">
+                                    {calculatedHours.toFixed(1)}시간 {workType === 'overtime' ? '연장근무' : '휴일근무'}를 신청하시겠습니까?<br/>
+                                    <span className="text-sm text-slate-500">
+                                        {workType === 'overtime'
+                                            ? `결재자: ${requestType === 'advance' ? '박부서장' : '이총괄'}`
+                                            : '결재선: 최팀장 → 박부서장 → 이총괄 → 강회장'}
+                                    </span>
+                                </p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setShowConfirmModal(false)}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                                    >
+                                        취소
+                                    </button>
+                                    <button
+                                        onClick={handleConfirmSubmit}
+                                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                    >
+                                        확인
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <ToastProvider>
+                <OvertimeRequestForm />
+            </ToastProvider>
+        );
+    </script>
+</body>
+</html>

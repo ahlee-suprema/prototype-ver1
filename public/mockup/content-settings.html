@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설정</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 p-6">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState } = React;
+
+        const Toggle = ({ enabled, onChange, label, description }) => (
+            <div className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-xl">
+                <div>
+                    <div className="font-medium text-slate-800">{label}</div>
+                    {description && <div className="text-sm text-slate-500 mt-1">{description}</div>}
+                </div>
+                <button onClick={() => onChange(!enabled)} className={`relative w-12 h-7 rounded-full transition-colors ${enabled ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                    <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : ''}`} />
+                </button>
+            </div>
+        );
+
+        const Settings = () => {
+            const [notifications, setNotifications] = useState({
+                push: true, email: true, clockInReminder: true, overtimeAlert: true
+            });
+
+            return (
+                <div className="max-w-3xl mx-auto">
+                    <div className="mb-6">
+                        <h1 className="text-2xl font-bold text-slate-800">설정</h1>
+                        <p className="text-slate-500 text-sm">시스템 환경설정</p>
+                    </div>
+
+                    {/* Profile */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+                        <h3 className="font-semibold text-slate-800 mb-4">프로필</h3>
+                        <div className="flex items-center gap-6">
+                            <div className="w-20 h-20 bg-blue-500 rounded-2xl flex items-center justify-center text-white text-2xl font-bold">김</div>
+                            <div>
+                                <div className="text-xl font-bold text-slate-800">김호준</div>
+                                <div className="text-slate-500">개발1팀 · 선임</div>
+                                <div className="text-sm text-slate-400 mt-1">hjkim@suprema.co.kr</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Notifications */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6">
+                        <div className="p-4 border-b border-slate-100">
+                            <h3 className="font-semibold text-slate-800">알림 설정</h3>
+                        </div>
+                        <div className="divide-y divide-slate-100">
+                            <Toggle label="푸시 알림" description="모바일 푸시 알림을 받습니다" enabled={notifications.push} onChange={(v) => setNotifications({...notifications, push: v})} />
+                            <Toggle label="이메일 알림" description="중요 알림을 이메일로 받습니다" enabled={notifications.email} onChange={(v) => setNotifications({...notifications, email: v})} />
+                            <Toggle label="출근 리마인더" description="출근 시간 10분 전에 알림" enabled={notifications.clockInReminder} onChange={(v) => setNotifications({...notifications, clockInReminder: v})} />
+                            <Toggle label="연장근무 경고" description="52시간 초과 위험 시 알림" enabled={notifications.overtimeAlert} onChange={(v) => setNotifications({...notifications, overtimeAlert: v})} />
+                        </div>
+                    </div>
+
+                    {/* Work Settings */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                        <h3 className="font-semibold text-slate-800 mb-4">근무 설정</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm text-slate-600 mb-2">기본 출근 시간</label>
+                                <input type="time" defaultValue="08:00" className="w-full px-4 py-2 border border-slate-200 rounded-xl" />
+                            </div>
+                            <div>
+                                <label className="block text-sm text-slate-600 mb-2">기본 퇴근 시간</label>
+                                <input type="time" defaultValue="17:00" className="w-full px-4 py-2 border border-slate-200 rounded-xl" />
+                            </div>
+                        </div>
+                        <button className="w-full mt-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700">저장</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Settings />);
+    </script>
+</body>
+</html>

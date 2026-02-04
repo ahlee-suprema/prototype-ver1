@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>외근 및 출장</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd',
+                            400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8',
+                            800: '#1e40af', 900: '#1e3a8a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Icons
+        const Icons = {
+            Briefcase: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            ),
+            Calendar: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            ),
+            MapPin: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            ),
+            Plus: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+            ),
+            TrendingUp: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+            ),
+        };
+
+        // Business Trip Status Component
+        const BusinessTripStatus = () => {
+            const thisMonthTrips = 5;
+            const thisMonthDays = 8;
+            const upcomingTrips = 2;
+            const thisYearTrips = 24;
+
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">외근/출장 현황</h3>
+
+                    {/* This Month Status */}
+                    <div className="mb-6">
+                        <div className="mb-2">
+                            <div className="text-sm text-slate-600 mb-1">이번달 외근/출장</div>
+                            <div className="text-3xl font-bold text-green-600">{thisMonthTrips}건</div>
+                        </div>
+                        <div className="text-sm text-slate-500 mb-4">총 {thisMonthDays}일</div>
+
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 bg-slate-50 rounded-xl">
+                                <div className="text-xs text-slate-500 mb-1">외근</div>
+                                <div className="text-xl font-bold text-slate-800">3건</div>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-xl">
+                                <div className="text-xs text-slate-500 mb-1">출장</div>
+                                <div className="text-xl font-bold text-slate-800">2건</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Upcoming Trips */}
+                    <div className="pt-6 border-t border-slate-100 mb-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-sm text-slate-600 mb-1">예정된 일정</div>
+                                <div className="text-2xl font-bold text-primary-600">{upcomingTrips}건</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-xs text-slate-500">올해 누적</div>
+                                <div className="text-lg font-semibold text-slate-700">{thisYearTrips}건</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Quick Stats */}
+                    <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl">
+                        <div className="flex items-center gap-2 text-sm text-green-700">
+                            <Icons.TrendingUp />
+                            <span>전월 대비 20% 감소</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Business Trip Request Status Component
+        const BusinessTripRequestStatus = () => {
+            const requests = [
+                {
+                    id: 1,
+                    type: '출장',
+                    title: '서울 본사 미팅',
+                    dates: '2026-02-05 ~ 2026-02-06',
+                    days: 2,
+                    status: 'pending',
+                    approver: '박팀장',
+                    requestDate: '2026-01-28',
+                    location: '서울 강남구',
+                    purpose: '프로젝트 킥오프 미팅'
+                },
+                {
+                    id: 2,
+                    type: '외근',
+                    title: '고객사 방문',
+                    dates: '2026-01-30',
+                    days: 1,
+                    status: 'approved',
+                    approver: '박팀장',
+                    requestDate: '2026-01-27',
+                    approvedDate: '2026-01-28',
+                    location: '판교 테크노밸리',
+                    purpose: '시스템 점검 및 유지보수'
+                },
+                {
+                    id: 3,
+                    type: '출장',
+                    title: '부산 지사 교육',
+                    dates: '2026-01-22 ~ 2026-01-24',
+                    days: 3,
+                    status: 'approved',
+                    approver: '박팀장',
+                    requestDate: '2026-01-15',
+                    approvedDate: '2026-01-16',
+                    location: '부산 해운대구',
+                    purpose: '신입사원 교육'
+                },
+                {
+                    id: 4,
+                    type: '외근',
+                    title: '납품 업체 방문',
+                    dates: '2026-01-20',
+                    days: 1,
+                    status: 'approved',
+                    approver: '박팀장',
+                    requestDate: '2026-01-18',
+                    approvedDate: '2026-01-19',
+                    location: '안양시 만안구',
+                    purpose: '제품 검수 및 계약'
+                },
+            ];
+
+            const getStatusBadge = (status) => {
+                const styles = {
+                    pending: 'bg-amber-100 text-amber-700 border-amber-200',
+                    approved: 'bg-green-100 text-green-700 border-green-200',
+                    rejected: 'bg-red-100 text-red-700 border-red-200',
+                };
+                const labels = {
+                    pending: '승인 대기',
+                    approved: '승인 완료',
+                    rejected: '반려',
+                };
+                return (
+                    <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${styles[status]}`}>
+                        {labels[status]}
+                    </span>
+                );
+            };
+
+            const getTypeBadge = (type) => {
+                const styles = {
+                    '외근': 'bg-blue-100 text-blue-700',
+                    '출장': 'bg-purple-100 text-purple-700',
+                };
+                return (
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${styles[type]}`}>
+                        {type}
+                    </span>
+                );
+            };
+
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-slate-800">외근/출장 신청 현황</h3>
+                        <span className="text-sm text-slate-500">{requests.filter(r => r.status === 'pending').length}건 대기중</span>
+                    </div>
+
+                    <div className="space-y-3">
+                        {requests.map((request) => (
+                            <div
+                                key={request.id}
+                                className={`p-4 rounded-xl border transition-all ${
+                                    request.status === 'pending'
+                                        ? 'bg-amber-50 border-amber-200'
+                                        : 'bg-slate-50 border-slate-200'
+                                }`}
+                            >
+                                <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        {getTypeBadge(request.type)}
+                                        <span className="font-semibold text-slate-800">{request.title}</span>
+                                    </div>
+                                    {getStatusBadge(request.status)}
+                                </div>
+                                <div className="space-y-1 mb-2">
+                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                        <Icons.Calendar />
+                                        <span>{request.dates} ({request.days}일)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                        <Icons.MapPin />
+                                        <span>{request.location}</span>
+                                    </div>
+                                    <div className="text-sm text-slate-600">목적: {request.purpose}</div>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-slate-500">
+                                    <span>신청: {request.requestDate}</span>
+                                    {request.approvedDate && <span>승인: {request.approvedDate}</span>}
+                                    <span>결재자: {request.approver}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // Date Range Filter Component
+        const DateRangeFilter = ({ onRangeChange }) => {
+            const [mode, setMode] = useState('week');
+            const [startDate, setStartDate] = useState('');
+            const [endDate, setEndDate] = useState('');
+
+            const handleModeChange = (newMode) => {
+                setMode(newMode);
+                if (newMode !== 'manual') {
+                    onRangeChange && onRangeChange(newMode);
+                }
+            };
+
+            const handleManualApply = () => {
+                if (startDate && endDate) {
+                    onRangeChange && onRangeChange('manual', startDate, endDate);
+                }
+            };
+
+            const buttons = [
+                { key: 'week', label: '이번 주' },
+                { key: 'month', label: '이번 달' },
+                { key: 'year', label: '올해' },
+                { key: 'manual', label: '직접 선택' },
+            ];
+
+            return (
+                <div className="mb-4">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {buttons.map(btn => (
+                            <button
+                                key={btn.key}
+                                onClick={() => handleModeChange(btn.key)}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                    mode === btn.key
+                                        ? 'bg-primary-600 text-white shadow-sm'
+                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                {btn.label}
+                            </button>
+                        ))}
+                    </div>
+                    {mode === 'manual' && (
+                        <div className="flex items-center gap-3 mt-3">
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={e => setStartDate(e.target.value)}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                            <span className="text-slate-400">~</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={e => setEndDate(e.target.value)}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                            <button
+                                onClick={handleManualApply}
+                                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+                            >
+                                조회
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Business Trip History Component
+        const BusinessTripHistory = () => {
+            const history = [
+                { id: 1, type: '출장', title: '부산 지사 교육', dates: '2026-01-22 ~ 2026-01-24', days: 3, location: '부산 해운대구', purpose: '신입사원 교육', month: '2026-01' },
+                { id: 2, type: '외근', title: '납품 업체 방문', dates: '2026-01-20', days: 1, location: '안양시 만안구', purpose: '제품 검수', month: '2026-01' },
+                { id: 3, type: '외근', title: '고객사 미팅', dates: '2026-01-15', days: 1, location: '강남구 역삼동', purpose: '프로젝트 협의', month: '2026-01' },
+                { id: 4, type: '출장', title: '대전 본사 회의', dates: '2025-12-28 ~ 2025-12-29', days: 2, location: '대전 유성구', purpose: '연말 결산 회의', month: '2025-12' },
+                { id: 5, type: '외근', title: '제조사 방문', dates: '2025-12-20', days: 1, location: '수원시 영통구', purpose: '품질 점검', month: '2025-12' },
+                { id: 6, type: '출장', title: '제주 워크샵', dates: '2025-12-14 ~ 2025-12-16', days: 3, location: '제주시', purpose: '팀 워크샵', month: '2025-12' },
+                { id: 7, type: '외근', title: '협력사 미팅', dates: '2025-11-25', days: 1, location: '분당구 정자동', purpose: '계약 협의', month: '2025-11' },
+                { id: 8, type: '외근', title: '고객사 점검', dates: '2025-11-15', days: 1, location: '서초구 서초동', purpose: '시스템 점검', month: '2025-11' },
+            ];
+
+            // Group by month
+            const groupedHistory = history.reduce((acc, item) => {
+                if (!acc[item.month]) {
+                    acc[item.month] = [];
+                }
+                acc[item.month].push(item);
+                return acc;
+            }, {});
+
+            const formatMonth = (monthStr) => {
+                const [year, month] = monthStr.split('-');
+                return `${year}년 ${parseInt(month)}월`;
+            };
+
+            const calculateMonthlyTotal = (items) => {
+                return {
+                    count: items.length,
+                    days: items.reduce((sum, item) => sum + item.days, 0)
+                };
+            };
+
+            return (
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">외근/출장 이력</h3>
+                    <DateRangeFilter onRangeChange={(mode, start, end) => console.log(mode, start, end)} />
+
+                    <div className="space-y-6">
+                        {Object.entries(groupedHistory).map(([month, items]) => {
+                            const totals = calculateMonthlyTotal(items);
+                            return (
+                                <div key={month}>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <div className="h-px flex-1 bg-slate-200" />
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-sm font-medium text-slate-500">{formatMonth(month)}</span>
+                                            <span className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded">
+                                                {totals.count}건 · {totals.days}일
+                                            </span>
+                                        </div>
+                                        <div className="h-px flex-1 bg-slate-200" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        {items.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                                        item.type === '출장'
+                                                            ? 'bg-purple-100'
+                                                            : 'bg-blue-100'
+                                                    }`}>
+                                                        <Icons.Briefcase />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-medium text-slate-800">{item.title}</span>
+                                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                                                item.type === '출장'
+                                                                    ? 'bg-purple-100 text-purple-700'
+                                                                    : 'bg-blue-100 text-blue-700'
+                                                            }`}>
+                                                                {item.type}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-sm text-slate-500">
+                                                            {item.dates} · {item.location}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="font-semibold text-slate-800">{item.days}일</div>
+                                                    <div className="text-xs text-slate-500">완료</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        // Main Content Component
+        const BusinessTripManagement = () => {
+            return (
+                <div className="max-w-7xl mx-auto">
+                    {/* Header */}
+                    <div className="mb-6">
+                        <h1 className="text-2xl font-bold text-slate-800">외근 및 출장</h1>
+                        <p className="text-slate-500">외근/출장 현황 및 신청 내역을 관리합니다</p>
+                    </div>
+
+                    {/* Action Button */}
+                    <div className="mb-6">
+                        <button
+                            onClick={() => window.location.href = 'business-trip-request.html'}
+                            className="px-6 py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors flex items-center gap-2 shadow-lg shadow-green-500/30"
+                        >
+                            <Icons.Plus />
+                            외근/출장 신청
+                        </button>
+                    </div>
+
+                    {/* Content Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Left Column - Status */}
+                        <div className="lg:col-span-1">
+                            <BusinessTripStatus />
+                        </div>
+
+                        {/* Right Column - Request Status and History */}
+                        <div className="lg:col-span-2 space-y-6">
+                            <BusinessTripRequestStatus />
+                            <BusinessTripHistory />
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Sidebar Icons
+        const SidebarIcons = {
+            Home: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+            Clock: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Chart: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+            Settings: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+            Bell: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+            Users: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+            Island: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 4c2-1 5-1 7 1-2 0-4 1-5 3m-2-4c-2-1-5-1-7 1 2 0 4 1 5 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 8c0 4-1 8-2 12" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20c2-2 5-3 8-3s6 1 8 3" /></svg>,
+            Timer: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 21a9 9 0 100-18 9 9 0 000 18z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 1h6M12 1v2" /></svg>,
+            Briefcase: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
+            Menu: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
+        };
+
+        const EmpSidebar = ({ collapsed, setCollapsed }) => {
+            const menuItems = [
+                { id: 'dashboard', icon: <SidebarIcons.Home />, label: '대시보드', page: 'emp-index.html' },
+                { id: 'attendance', icon: <SidebarIcons.Clock />, label: '출퇴근 기록', page: 'emp-attendance-records.html' },
+                { id: 'leave', icon: <SidebarIcons.Island />, label: '휴가관리', page: 'emp-leave-management.html' },
+                { id: 'overtime', icon: <SidebarIcons.Timer />, label: '연장/휴일 근무', page: 'emp-overtime-management.html' },
+                { id: 'business-trip', icon: <SidebarIcons.Briefcase />, label: '외근 및 출장', page: null },
+                { id: 'team', icon: <SidebarIcons.Users />, label: '팀 근무 관리', page: 'team-management.html?mode=employee' },
+                { id: 'reports', icon: <SidebarIcons.Chart />, label: '리포트', page: 'reports.html?mode=employee' },
+                { id: 'settings', icon: <SidebarIcons.Settings />, label: '설정', page: 'settings.html?mode=employee' },
+            ];
+            return (
+                <aside className={`fixed left-0 top-0 h-full bg-white border-r border-slate-200 transition-all duration-300 z-40 ${collapsed ? 'w-20' : 'w-64'}`}>
+                    <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+                        {!collapsed && <a href="emp-index.html" className="flex items-center gap-3"><div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center"><span className="text-white font-bold text-sm">S</span></div><span className="font-bold text-slate-800">Suprema T&A</span></a>}
+                        <button onClick={() => setCollapsed(!collapsed)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><SidebarIcons.Menu /></button>
+                    </div>
+                    <nav className="p-3 space-y-1">
+                        {menuItems.map(item => (
+                            <button key={item.id} onClick={() => { if (item.page) window.location.href = item.page; }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${item.id === 'business-trip' ? 'bg-primary-50 text-primary-600' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'}`}>
+                                <span className={item.id === 'business-trip' ? 'text-primary-600' : 'text-slate-400'}>{item.icon}</span>
+                                {!collapsed && <span className="font-medium flex-1">{item.label}</span>}
+                            </button>
+                        ))}
+                    </nav>
+                </aside>
+            );
+        };
+
+        const EmpHeader = ({ collapsed }) => (
+            <header className={`fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-lg border-b border-slate-100 z-30 transition-all duration-300 ${collapsed ? 'left-20' : 'left-64'}`}>
+                <div className="h-full px-6 flex items-center justify-end">
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-slate-100 rounded-xl p-1">
+                            <button className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-primary-600 shadow-sm">직원</button>
+                            <button onClick={() => window.location.href='business-trip-management.html'} className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800">HR 관리자</button>
+                        </div>
+                        <button className="relative p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                            <SidebarIcons.Bell />
+                            <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">2</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+        );
+
+        const App = () => {
+            const [collapsed, setCollapsed] = useState(false);
+            return (
+                <div className="min-h-screen bg-slate-50">
+                    <EmpSidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+                    <EmpHeader collapsed={collapsed} />
+                    <main className={`pt-16 transition-all duration-300 ${collapsed ? 'ml-20' : 'ml-64'}`}>
+                        <div className="p-6">
+                            <BusinessTripManagement />
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
