@@ -361,3 +361,38 @@ Specified module format (CommonJs) is not matching the module format of the sour
 The CommonJs module format was specified in the package.json that is affecting this source file or by using an special extension, but Ecmascript import/export syntax is used in the source code.
 The module was automatically converted to an EcmaScript module, but that is in conflict with the specified module format. Either change the "type" field in the package.json or replace EcmaScript import/export syntax with CommonJs syntas in the source file.
 In some cases EcmaScript import/export syntax is added by an transform and isn't actually part of the source code. In these cases revisit transformation options to inject the correct syntax.
+[44:52:05.183] Server  ERROR   ⨯ ./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./src/app/globals.css
+C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\postcss.config.js:1
+export default {
+^^^^^^
+
+SyntaxError: Unexpected token 'export'
+Import trace for requested module:
+./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./src/app/globals.css
+./src/app/globals.css
+[44:52:05.533] Server  ERROR   ⨯ ./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./src/app/globals.css
+C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\postcss.config.js:1
+export default {
+^^^^^^
+
+SyntaxError: Unexpected token 'export'
+Import trace for requested module:
+./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./src/app/globals.css
+./src/app/globals.css
+[44:52:05.574] Server  ERROR   ⨯ ./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./src/app/globals.css
+C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\postcss.config.js:1
+export default {
+^^^^^^
+
+SyntaxError: Unexpected token 'export'
+Import trace for requested module:
+./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./src/app/globals.css
+./src/app/globals.css
+[18:39:03.252] Server  ERROR   Error: ENOENT: no such file or directory, stat 'C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\.next\dev\cache\webpack\client-development\8.pack.gz'
+[18:39:03.254] Server  ERROR   ⨯ "unhandledRejection:" Error: ENOENT: no such file or directory, stat 'C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\.next\dev\cache\webpack\client-development\8.pack.gz'
+[18:39:03.254] Server  ERROR   ⨯ "unhandledRejection: " Error: ENOENT: no such file or directory, stat 'C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\.next\dev\cache\webpack\client-development\8.pack.gz'
+[18:39:04.513] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[18:39:21.176] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[18:40:20.406] Server  ERROR   Error: ENOENT: no such file or directory, stat 'C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\.next\dev\cache\webpack\server-development\1.pack.gz'
+[18:40:20.407] Server  ERROR   ⨯ "unhandledRejection:" Error: ENOENT: no such file or directory, stat 'C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\.next\dev\cache\webpack\server-development\1.pack.gz'
+[18:40:20.407] Server  ERROR   ⨯ "unhandledRejection: " Error: ENOENT: no such file or directory, stat 'C:\Users\ahlee\OneDrive - Suprema Inc\문서\TATF\Prototype\prototype-ver1\.next\dev\cache\webpack\server-development\1.pack.gz'
